@@ -28,8 +28,8 @@
 // Console variables
 //-----------------------------------------------------------------------------
 static ConVar miles_debug("miles_debug", "0", FCVAR_DEVELOPMENTONLY, "Enables debug prints for the Miles Sound System", "1 = print; 0 (zero) = no print");
-static ConVar miles_warnings("miles_warnings", "0", FCVAR_RELEASE, "Enables warning prints for the Miles Sound System", "1 = print; 0 (zero) = no print");
-static ConVar fmod_debug("fmod_debug", "0", FCVAR_RELEASE, "Enables debug prints for the FMOD Sound System", "1 = print; 0 (zero) = no print");
+static ConVar miles_warnings("miles_warnings", "0", FCVAR_DEVELOPMENTONLY, "Enables warning prints for the Miles Sound System", "1 = print; 0 (zero) = no print");
+static ConVar fmod_debug("fmod_debug", "0", FCVAR_DEVELOPMENTONLY, "Enables debug prints for the FMOD Sound System", "1 = print; 0 (zero) = no print");
 
 // Level change detection
 static ConVar miles_wav_auto_stop_on_level_change("miles_wav_auto_stop_on_level_change", "1", FCVAR_RELEASE, "Automatically stop custom audio when level changes (1 = enabled, 0 = disabled)");
