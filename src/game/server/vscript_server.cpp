@@ -23,6 +23,10 @@
 #include "vscript/languages/squirrel_re/include/sqvm.h"
 
 #include "game/shared/vscript_gamedll_defs.h"
+#include "game/shared/globalnonrewind_vars.h"
+#include "game/shared/weapon_heat.h"
+#include "game/shared/deathfield_system.h"
+#include "game/shared/highlight_context.h"
 
 #include "game/shared/vscript_shared.h"
 #include "game/shared/vscript_debug_overlay_shared.h"
@@ -31,6 +35,10 @@
 #include "vscript_server.h"
 #include "player.h"
 #include "detour_impl.h"
+#include "game/shared/weapon_script_vars.h"
+#include "game/shared/status_effects_sdk.h"
+#include "game/client/vscript_player.h"
+#include "game/client/vscript_remotefunctions.h"
 
 /*
 =====================
@@ -919,6 +927,87 @@ void Script_RegisterCoreServerFunctions(CSquirrelVM* s)
     DEFINE_SERVER_SCRIPTFUNC_NAMED(s, NavMesh_GetNearestPosInBounds, "Finds the nearest position to the provided point on the hull's NavMesh using provided bounds as extents", "vector ornull", "vector searchPoint, vector halfExtents, int hullType", false);
 
     DEFINE_SERVER_SCRIPTFUNC_NAMED(s, SaveRecordedAnimation, "Saves an anim_recording asset to be used by bakery. (dev only)", "void", "var recordedAnim, string fileName", false);
+
+    Script_RegisterRemoteFunctionServerNatives(s);
+
+    s->RegisterConstant("SHIELD_CHANGE_SOURCE_DIRECT", 0);
+    s->RegisterConstant("SHIELD_CHANGE_SOURCE_REGEN", 1);
+    s->RegisterConstant("FX_PATTACH_WEAPON_CHARGE_FRACTION_CURVED", 0x18);
+    s->RegisterConstant("FORCE_STANCE_STAND", 0);
+    s->RegisterConstant("FORCE_STANCE_CROUCH", 1);
+    s->RegisterConstant("WT_GADGET", 9);
+
+    s->RegisterConstant("PHASETYPE_DEFAULT", 0);
+    s->RegisterConstant("PHASETYPE_BALANCE", 1);
+    s->RegisterConstant("PHASETYPE_TUNNEL", 2);
+    s->RegisterConstant("PHASETYPE_DASH", 3);
+    s->RegisterConstant("PHASETYPE_GATE", 4);
+    s->RegisterConstant("PHASETYPE_BREACH", 5);
+    s->RegisterConstant("PHASETYPE_TRANSPORT", 6);
+    s->RegisterConstant("PHASETYPE_DOOR", 7);
+    s->RegisterConstant("PHASETYPE_TELEPORTER", 8);
+    s->RegisterConstant("PHASETYPE_REWIND", 9);
+
+    s->RegisterConstant("INFINITEAMMO_NONE", 0);
+    s->RegisterConstant("INFINITEAMMO_CLIPS", 1);
+
+    s->RegisterConstant("HIGHLIGHT_FLAG_REQUIRE_SAME_TEAM", 0x80);
+    s->RegisterConstant("HIGHLIGHT_FLAG_REQUIRE_DIFFERENT_TEAM", 0x100);
+    s->RegisterConstant("HIGHLIGHT_FLAG_REQUIRE_FRIENDLY_TEAM", 0x200);
+    s->RegisterConstant("HIGHLIGHT_FLAG_REQUIRE_ENEMY_TEAM", 0x400);
+    s->RegisterConstant("HIGHLIGHT_FLAG_REQUIRE_LOW_MOVEMENT", 0x1000);
+    s->RegisterConstant("HIGHLIGHT_FLAG_REQUIRE_HIGH_MOVEMENT", 0x2000);
+    s->RegisterConstant("HIGHLIGHT_FLAG_CHECK_OFTEN", 0x4000);
+    s->RegisterConstant("HIGHLIGHT_FLAG_CHECK_NEXT_FRAME", 0x8000);
+    s->RegisterConstant("HIGHLIGHT_FLAG_DISABLE_DEATH_FADE", 0x10000);
+    s->RegisterConstant("HIGHLIGHT_FLAG_TEAM_AGNOSTIC", 0x20000);
+    s->RegisterConstant("HIGHLIGHT_FLAG_ADDITIONAL_LOS_CHECKS", 0x80000);
+    s->RegisterConstant("HIGHLIGHT_VIS_LOS_ENTSONLY_BLOCKSCAN", 7);
+
+    HighlightContext_RegisterDrawFuncEnum(s->GetVM());
+
+    Script_RegisterFuncNamed(s, "HighlightContext_GetId", "Script_HighlightContext_GetId", "Get highlight context id by name", "int", "string name", false, Script_HighlightContext_GetId);
+    Script_RegisterFuncNamed(s, "HighlightContext_SetParam", "Script_HighlightContext_SetParam", "Set highlight param", "void", "int contextId, int paramIndex, vector value", false, Script_HighlightContext_SetParam);
+    Script_RegisterFuncNamed(s, "HighlightContext_GetParam", "Script_HighlightContext_GetParam", "Get highlight param", "vector", "int contextId, int paramIndex", false, Script_HighlightContext_GetParam);
+    Script_RegisterFuncNamed(s, "HighlightContext_SetDrawFunc", "Script_HighlightContext_SetDrawFunc", "Set draw function", "void", "int contextId, int drawFuncId", false, Script_HighlightContext_SetDrawFunc);
+    Script_RegisterFuncNamed(s, "HighlightContext_GetDrawFunc", "Script_HighlightContext_GetDrawFunc", "Get draw function", "int", "int contextId", false, Script_HighlightContext_GetDrawFunc);
+    Script_RegisterFuncNamed(s, "HighlightContext_SetRadius", "Script_HighlightContext_SetRadius", "Set outline radius", "void", "int contextId, float radius", false, Script_HighlightContext_SetRadius);
+    Script_RegisterFuncNamed(s, "HighlightContext_GetOutlineRadius", "Script_HighlightContext_GetOutlineRadius", "Get outline radius", "float", "int contextId", false, Script_HighlightContext_GetOutlineRadius);
+    Script_RegisterFuncNamed(s, "HighlightContext_GetInsideFunction", "Script_HighlightContext_GetInsideFunction", "Get inside function", "int", "int contextId", false, Script_HighlightContext_GetInsideFunction);
+    Script_RegisterFuncNamed(s, "HighlightContext_GetOutlineFunction", "Script_HighlightContext_GetOutlineFunction", "Get outline function", "int", "int contextId", false, Script_HighlightContext_GetOutlineFunction);
+    Script_RegisterFuncNamed(s, "HighlightContext_SetFlags", "Script_HighlightContext_SetFlags", "Set flags", "void", "int contextId, int flags", false, Script_HighlightContext_SetFlags);
+    Script_RegisterFuncNamed(s, "HighlightContext_SetNearFadeDistance", "Script_HighlightContext_SetNearFadeDistance", "Set near fade distance", "void", "int contextId, float distance", false, Script_HighlightContext_SetNearFadeDistance);
+    Script_RegisterFuncNamed(s, "HighlightContext_SetFarFadeDistance", "Script_HighlightContext_SetFarFadeDistance", "Set far fade distance", "void", "int contextId, float distance", false, Script_HighlightContext_SetFarFadeDistance);
+    Script_RegisterFuncNamed(s, "HighlightContext_SetFocusedColor", "Script_HighlightContext_SetFocusedColor", "Set focused color", "void", "int contextId, vector color", false, Script_HighlightContext_SetFocusedColor);
+    Script_RegisterFuncNamed(s, "HighlightContext_IsEntityVisible", "Script_HighlightContext_IsEntityVisible", "Is entity visible", "bool", "int contextId", false, Script_HighlightContext_IsEntityVisible);
+    Script_RegisterFuncNamed(s, "HighlightContext_IsAfterPostProcess", "Script_HighlightContext_IsAfterPostProcess", "Is after post process", "bool", "int contextId", false, Script_HighlightContext_IsAfterPostProcess);
+
+    Script_RegisterFuncNamed(s, "Weapon_GetBaseClassName", "Script_Global_Weapon_GetBaseClassName", "Returns baseclass or the weapon's classname", "string", "string weaponClassName", false, Script_Global_Weapon_GetBaseClassName);
+    Script_RegisterFuncNamed(s, "Weapon_GetBaseClassNameOrEmpty", "Script_Global_Weapon_GetBaseClassNameOrEmpty", "Returns baseclass or empty string", "string", "string weaponClassName", false, Script_Global_Weapon_GetBaseClassNameOrEmpty);
+
+    StatusEffects_SDK_RegisterServerFunctions(s);
+
+    // GlobalNonRewind variable system
+    Script_RegisterFuncNamed(s, "SetGlobalNonRewindNetBool", "Script_SetGlobalNonRewindNetBool", "Sets a global non-rewind bool", "void", "string name, bool value", false, Script_SetGlobalNonRewindNetBool);
+    Script_RegisterFuncNamed(s, "SetGlobalNonRewindNetInt", "Script_SetGlobalNonRewindNetInt", "Sets a global non-rewind int", "void", "string name, int value", false, Script_SetGlobalNonRewindNetInt);
+    Script_RegisterFuncNamed(s, "SetGlobalNonRewindNetFloat", "Script_SetGlobalNonRewindNetFloat", "Sets a global non-rewind float", "void", "string name, float value", false, Script_SetGlobalNonRewindNetFloat);
+    Script_RegisterFuncNamed(s, "SetGlobalNonRewindNetTime", "Script_SetGlobalNonRewindNetTime", "Sets a global non-rewind time", "void", "string name, float value", false, Script_SetGlobalNonRewindNetTime);
+    Script_RegisterFuncNamed(s, "GetGlobalNonRewindNetBool", "Script_GetGlobalNonRewindNetBool", "Gets a global non-rewind bool", "bool", "string name", false, Script_GetGlobalNonRewindNetBool);
+    Script_RegisterFuncNamed(s, "GetGlobalNonRewindNetInt", "Script_GetGlobalNonRewindNetInt", "Gets a global non-rewind int", "int", "string name", false, Script_GetGlobalNonRewindNetInt);
+    Script_RegisterFuncNamed(s, "GetGlobalNonRewindNetFloat", "Script_GetGlobalNonRewindNetFloat", "Gets a global non-rewind float", "float", "string name", false, Script_GetGlobalNonRewindNetFloat);
+    Script_RegisterFuncNamed(s, "GetGlobalNonRewindNetTime", "Script_GetGlobalNonRewindNetTime", "Gets a global non-rewind time", "float", "string name", false, Script_GetGlobalNonRewindNetTime);
+    Script_RegisterFuncNamed(s, "SetGlobalNonRewindNetEnt", "Script_SetGlobalNonRewindNetEnt", "Sets a global non-rewind entity", "void", "string name, entity ent", false, Script_SetGlobalNonRewindNetEnt);
+    Script_RegisterFuncNamed(s, "GetGlobalNonRewindNetEnt", "Script_GetGlobalNonRewindNetEnt", "Gets a global non-rewind entity", "entity ornull", "string name", false, Script_GetGlobalNonRewindNetEnt);
+
+
+    // Indexed deathfield query functions
+    DeathField_RegisterOnVM(s);
+
+    // Deathfield configuration
+    Script_RegisterFuncNamed(s, "DeathField_SetActive", "Script_DeathField_SetActive", "Sets a deathfield active state", "void", "int deathFieldIndex, bool active", false, Script_DeathField_SetActive);
+    Script_RegisterFuncNamed(s, "DeathField_SetOrigin", "Script_DeathField_SetOrigin", "Sets a deathfield center origin", "void", "int deathFieldIndex, vector origin", false, Script_DeathField_SetOrigin);
+    Script_RegisterFuncNamed(s, "DeathField_SetRadiusStartEnd", "Script_DeathField_SetRadiusStartEnd", "Sets deathfield radius start and end", "void", "int deathFieldIndex, float start, float end", false, Script_DeathField_SetRadiusStartEnd);
+    Script_RegisterFuncNamed(s, "DeathField_SetTimeStartEnd", "Script_DeathField_SetTimeStartEnd", "Sets deathfield time start and end", "void", "int deathFieldIndex, float start, float end", false, Script_DeathField_SetTimeStartEnd);
 }
 
 //---------------------------------------------------------------------------------
@@ -956,6 +1045,8 @@ static void Script_RegisterServerEntityClassFuncs()
         return;
 
     initialized = true;
+
+    WeaponScriptVars_RegisterEntityFuncs(g_serverScriptEntityStruct);
 }
 //---------------------------------------------------------------------------------
 static void Script_RegisterServerPlayerClassFuncs()
@@ -999,6 +1090,13 @@ static void Script_RegisterServerPlayerClassFuncs()
         "string text, float duration, float fadeTime",
         false,
         ServerScript_ChatBuilderRainbow);
+
+    // Register shared player functions (PushForcedStance, GetLastTimeDamaged, skydive, etc.)
+    Script_RegisterPlayerScriptFunctions(g_serverScriptPlayerStruct);
+    WeaponScriptVars_RegisterPhaseShiftOverride(g_serverScriptPlayerStruct);
+
+    // Register SERVER-ONLY player setters (NonRewind setters must not be on CLIENT)
+    Script_RegisterPlayerScriptSetters(g_serverScriptPlayerStruct);
 }
 //---------------------------------------------------------------------------------
 static void Script_RegisterServerAIClassFuncs()
@@ -1012,6 +1110,29 @@ static void Script_RegisterServerAIClassFuncs()
     initialized = true;
 }
 //---------------------------------------------------------------------------------
+static SQRESULT ServerScript_SetScriptPoseParam0(HSQUIRRELVM v)
+{
+    SCRIPT_CHECK_AND_RETURN(v, SQ_OK);
+}
+
+static SQRESULT ServerScript_GetScriptPoseParam0(HSQUIRRELVM v)
+{
+    sq_pushfloat(v, 0.0f);
+    SCRIPT_CHECK_AND_RETURN(v, SQ_OK);
+}
+
+static SQRESULT ServerScript_SetScriptPoseParam1(HSQUIRRELVM v)
+{
+    SCRIPT_CHECK_AND_RETURN(v, SQ_OK);
+}
+
+static SQRESULT ServerScript_GetScriptPoseParam1(HSQUIRRELVM v)
+{
+    sq_pushfloat(v, 0.0f);
+    SCRIPT_CHECK_AND_RETURN(v, SQ_OK);
+}
+
+//---------------------------------------------------------------------------------
 static void Script_RegisterServerWeaponClassFuncs()
 {
     v_Script_RegisterServerWeaponClassFuncs();
@@ -1021,6 +1142,48 @@ static void Script_RegisterServerWeaponClassFuncs()
         return;
 
     initialized = true;
+
+    g_serverScriptWeaponStruct->AddFunction(
+        "SetScriptPoseParam0",
+        "Script_SetScriptPoseParam0",
+        "Sets script pose parameter 0 (server no-op)",
+        "void",
+        "float value",
+        false,
+        ServerScript_SetScriptPoseParam0);
+
+    g_serverScriptWeaponStruct->AddFunction(
+        "GetScriptPoseParam0",
+        "Script_GetScriptPoseParam0",
+        "Gets script pose parameter 0 (server always returns 0.0)",
+        "float",
+        "",
+        false,
+        ServerScript_GetScriptPoseParam0);
+
+    g_serverScriptWeaponStruct->AddFunction(
+        "SetScriptPoseParam1",
+        "Script_SetScriptPoseParam1",
+        "Sets script pose parameter 1 (server no-op)",
+        "void",
+        "float value",
+        false,
+        ServerScript_SetScriptPoseParam1);
+
+    g_serverScriptWeaponStruct->AddFunction(
+        "GetScriptPoseParam1",
+        "Script_GetScriptPoseParam1",
+        "Gets script pose parameter 1 (server always returns 0.0)",
+        "float",
+        "",
+        false,
+        ServerScript_GetScriptPoseParam1);
+
+    WeaponScriptVars_RegisterWeaponFuncs(g_serverScriptWeaponStruct);
+    WeaponScriptVars_RegisterWeaponLockedSetSetter(g_serverScriptWeaponStruct);
+    WeaponScriptVars_RegisterInfiniteAmmoFuncs(g_serverScriptWeaponStruct);
+    WeaponScriptVars_RegisterInfiniteAmmoSetter(g_serverScriptWeaponStruct);
+    WeaponHeat_RegisterWeaponFuncs(g_serverScriptWeaponStruct);
 }
 //---------------------------------------------------------------------------------
 static void Script_RegisterServerProjectileClassFuncs()

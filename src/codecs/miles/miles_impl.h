@@ -29,6 +29,9 @@ inline void(*v_MilesQueueEventRun)(Miles::Queue*, const char*);
 inline void(*v_MilesBankPatch)(Miles::Bank*, char*, char*);
 inline unsigned int (*v_MilesSampleSetSourceRaw)(__int64 a1, __int64 a2, unsigned int a3, int a4, unsigned __int16 a5, bool a6);
 inline unsigned int (*v_MilesEventGetDetails)(__int64 a1, __int64 a2, __int64 a3, __int64 a4, __int64 a5, __int64 a6, void* const releaseList);
+
+// Typedef for the 6-param version used internally (Miles 10.0.42 - game version)
+typedef unsigned int (*MilesEventGetDetails_t)(__int64 bankHandle, __int64* templateIdPtr, const char** nameOut, int* param3, int* param4, int* param5);
 inline __int64 (*v_MilesSampleCreate)(__int64 a1, __int64 a2, unsigned __int8 a3);
 inline __int64 (*v_MilesSamplePlay)(void* sample);
 inline __int64 (*v_MilesSamplePause)(_BYTE* sample);
@@ -55,18 +58,42 @@ inline void(*v_CSOM_AddEventToQueue)(const char* eventName);
 
 inline void(*v_ProcessClientAnimEvent)(__int64 a1, __int64 a2, __int64 a3, unsigned int a4, const char* a5, __int64 a6, __int64 a7);
 
-inline int(*v_StopSoundOnEntityForLocalPlayer)(__int64 a1, const char* a2);
-inline int(*v_EmitSoundOnEntityForLocalPlayer)(__int64 a1, const char* a2);
-inline int(*v_Charge_EmitSoundOnEntityForLocalPlayer)(__int64 a1, const char *a2, float a3);
-inline const char*(*v_sub_1407DC230)(CHAR* a1);
-inline void(*v_sub_1401E9C50)(__int64 *a1, __int64 a2);
+// Core audio event dispatcher - action 1=play, 2=stop, 3=?
+inline __int64(*v_Miles_DispatchEvent)(unsigned __int16 action);
 
-inline __int64(*v_EmitSoundOnEntity)(const char *a1, unsigned int a2, __int64 a3, const char *a4, __int64 a5);
-inline __int64(*v_EmitSoundOnEntityImpl)(__int64 v);
-inline __int64(*v_ResolveToEntity)(__int64 a1, __int64 a2, __int64 a3);
-inline void* g_VMEntityType;
+// Stop signal handler - sends "signal" to running events 
+inline __int64(*v_Miles_StopEventByHash)(__int64 eventHash);
 
-inline __int64(*v_sub_1409A7570)(__int64 a1, char* a2);
+// Stop all sounds with filter
+inline __int64(*v_Miles_StopAllSounds)(__int64 a1, __int64 a2, __int64 filterType);
+
+// Event hash lookup from name (FNV-1a)
+inline void(*v_Miles_SetEventHashFromName)(char* eventName);
+
+// Event hash lookup from hash value directly
+inline void(*v_Miles_SetEventHashFromValue)(__int64 eventHash);
+
+// Miles event table entry processor (sub_1409AF740) - gets event details from template ID
+inline char(*v_Miles_ProcessEventEntry)(__int64 entryPtr);
+
+// Audio listener bitmask processing function (sub_1409190F0)
+// This function processes 3D audio spatialization and listener masks.
+// In Miles 10.0.62, internal data structures changed causing a crash when
+// clearing listener bitmask bits. We patch to NOP out the problematic instruction.
+inline void(*v_Miles_ProcessListenerMasks)();
+
+// Global pointers for audio state
+inline uint64_t* g_Miles_QueuedEventData;    // qword_1655B9640 - event data structure
+inline uint64_t* g_Miles_EventTimeOffset;     // qword_1655B9648 - time offset
+inline uint64_t* g_Miles_QueuedEventHash;     // qword_1655B9658 - current event hash
+inline uint32_t* g_Miles_EntityId;            // qword_1655B9660 - entity ID
+inline float* g_Miles_SoundPosition;          // qword_1655B9668 - position XYZ
+
+// Miles event table globals (for enumerating all events)
+inline uint64_t* g_Miles_EventTableBase;      // qword_14D4E4AE8 - event table base pointer
+inline uint32_t* g_Miles_HashBucketTable;     // dword_14D4E0AE8 - hash bucket index table (4096 entries)
+inline uint64_t* g_Miles_EventCount;          // qword_14D4DF258 - number of events in table
+inline uint64_t* g_Miles_BankHandle;          // qword_14D4DF238 - Miles bank handle for MilesEventGetDetails
 
 struct CSOM_GlobalState_s
 {
@@ -114,12 +141,6 @@ struct EventTableEntry {
 
 inline CSOM_GlobalState_s* g_milesGlobals;
 
-// Global listener position tracking
-extern Vector3D g_listenerPosition;
-
-void OverrideEventName(const char* eventName);
-bool DoesOverrideExist(const char* eventName);
-
 // Handle level changes (call from Mod_HandleLevelChanged)
 void Miles_HandleLevelChanged();
 
@@ -143,9 +164,18 @@ class MilesCore : public IDetour
 		LogFunAdr("CSOM_MilesAsync_FileStatus", v_CSOM_MilesAsync_FileStatus);
 		LogFunAdr("CSOM_MilesAsync_FileCancel", v_CSOM_MilesAsync_FileCancel);
 		LogFunAdr("CSOM_AddEventToQueue", v_CSOM_AddEventToQueue);
-		LogFunAdr("EmitSoundOnEntityImpl", v_EmitSoundOnEntityImpl);
-		LogFunAdr("ResolveToEntity", v_ResolveToEntity);
-		LogVarAdr("g_VMEntityType", g_VMEntityType);
+		LogFunAdr("Miles_DispatchEvent", v_Miles_DispatchEvent);
+		LogFunAdr("Miles_StopEventByHash", v_Miles_StopEventByHash);
+		LogFunAdr("Miles_StopAllSounds", v_Miles_StopAllSounds);
+		LogFunAdr("Miles_SetEventHashFromName", v_Miles_SetEventHashFromName);
+		LogFunAdr("Miles_SetEventHashFromValue", v_Miles_SetEventHashFromValue);
+		LogFunAdr("Miles_ProcessEventEntry", v_Miles_ProcessEventEntry);
+		LogFunAdr("Miles_ProcessListenerMasks", v_Miles_ProcessListenerMasks);
+		LogVarAdr("g_Miles_QueuedEventData", g_Miles_QueuedEventData);
+		LogVarAdr("g_Miles_QueuedEventHash", g_Miles_QueuedEventHash);
+		LogVarAdr("g_Miles_EventTableBase", g_Miles_EventTableBase);
+		LogVarAdr("g_Miles_HashBucketTable", g_Miles_HashBucketTable);
+		LogVarAdr("g_Miles_BankHandle", g_Miles_BankHandle);
 		LogVarAdr("g_milesGlobals", g_milesGlobals);
 	}
 	virtual void GetFun(void) const
@@ -160,15 +190,28 @@ class MilesCore : public IDetour
 		Module_FindPattern(g_GameDll, "0F B6 11 4C 8B C1").GetPtr(v_CSOM_AddEventToQueue);
 
 		Module_FindPattern(g_GameDll, "48 89 5C 24 18 57 41 56 41 57 48 83 EC 40 48 8B F9 41 8B D9 8B 89 D8 16").GetPtr(v_ProcessClientAnimEvent);
-		Module_FindPattern(g_GameDll, "48 89 5C 24 18 56 48 83 EC 40 8B 41 78 48 8B D9 2B 41 54 48 89 7C 24 58 83 F8 02 74 28 44 8D 48").GetPtr(v_EmitSoundOnEntityImpl);
-		Module_FindPattern(g_GameDll, "48 85 D2 75 16 8B 05 ?? ?? ?? ?? 83 F8 01 7D 08 FF C0 89 05 ?? ?? ?? ?? 33 C0 C3 F7 02 00 80 40").GetPtr(v_ResolveToEntity);
-		Module_FindPattern(g_GameDll, "48 83 EC 28 80 3A 00 75 3B 48 85 C9 74 1F E8 8D").GetPtr(v_StopSoundOnEntityForLocalPlayer);
-		Module_FindPattern(g_GameDll, "48 83 EC 28 80 3A 00 75 51 48 85 C9 74 2A E8 AD").GetPtr(v_EmitSoundOnEntityForLocalPlayer);
-		Module_FindPattern(g_GameDll, "48 83 EC 28 80 3A 00 75 51 48 85 C9 74 2A E8 1D").GetPtr(v_Charge_EmitSoundOnEntityForLocalPlayer);
-		Module_FindPattern(g_GameDll, "40 57 48 83 EC 30 48 8B F9 48 85 C9 75 0D 48 8D 05 C3 14 B7 00").GetPtr(v_sub_1407DC230);
-		Module_FindPattern(g_GameDll, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 56 48 83 EC 20 4C 8B 74 24 50 48").GetPtr(v_EmitSoundOnEntity);
-		Module_FindPattern(g_GameDll, "40 53 48 83 EC 20 48 8B D9 48 8B 49 10 48 85 C9 0F 88 E7 00 00 00 4C 8B 43 08 4D 8D 0C 10 74 14 4D 8D 41 FF 49 8B C0 48 99 48 F7 F9 4C 2B C2 4C 03 C1 EB 19 4D 85 C0 B8 08 00 00 00 4C 0F 44 C0").GetPtr(v_sub_1401E9C50);
-		Module_FindPattern(g_GameDll, "48 83 EC 28 80 3A 00 75 51 48 85 C9 74 2A E8 AD").GetPtr(v_sub_1409A7570);
+
+		// Core Miles event dispatcher (sub_140956660) - catches all play/stop events
+		Module_FindPattern(g_GameDll, "48 83 EC 28 48 8B 05 ?? ?? ?? ?? 48 83 F8 01 75").GetPtr(v_Miles_DispatchEvent);
+
+		// Stop event by hash signal (sub_14095B860) - sends signal to stop event
+		Module_FindPattern(g_GameDll, "48 8B C1 4C 8D 15 ?? ?? ?? ?? 25 FF 07 00 00 4C").GetPtr(v_Miles_StopEventByHash);
+
+		// Stop all sounds (sub_14095B5C0) 
+		Module_FindPattern(g_GameDll, "48 89 5C 24 08 48 89 6C 24 10 48 89 74 24 18 48 89 7C 24 20 41 54 41 56 41 57 48 83 EC 20 48 8D").GetPtr(v_Miles_StopAllSounds);
+
+		// Set event hash from name - FNV-1a hash (sub_14095B480)
+		Module_FindPattern(g_GameDll, "0F B6 11 4C 8B C1 84 D2 75 0C 48 C7 05").GetPtr(v_Miles_SetEventHashFromName);
+
+		// Set event hash from value directly (sub_14095B420)
+		Module_FindPattern(g_GameDll, "4C 8B 05 ?? ?? ?? ?? 48 8B C1 25 FF 0F 00 00 48 8B D1").GetPtr(v_Miles_SetEventHashFromValue);
+
+		// Miles event entry processor (sub_1409AF740) - processes event table entries
+		Module_FindPattern(g_GameDll, "40 55 53 56 41 56 48 8D 6C 24 ?? 48 81 EC 38 01").GetPtr(v_Miles_ProcessEventEntry);
+
+		// Audio listener bitmask processing (sub_1409190F0) - needs patching for Miles 10.0.62
+		// Pattern: Function prologue with unique stack frame size 0x50B10
+		Module_FindPattern(g_GameDll, "48 89 5C 24 08 48 89 74 24 10 48 89 7C 24 18 F3 0F 11 5C 24 20 55 41 56 41 57 B8 10 0B 05 00").GetPtr(v_Miles_ProcessListenerMasks);
 
 		g_RadAudioSystemDll.GetExportedSymbol("MilesAllocEx").GetPtr(v_MilesAllocEx);
 		g_RadAudioSystemDll.GetExportedSymbol("MilesQueueEventRun").GetPtr(v_MilesQueueEventRun);
@@ -194,7 +237,44 @@ class MilesCore : public IDetour
 	virtual void GetVar(void) const
 	{
 		g_milesGlobals = CMemory(v_CSOM_Initialize).FindPatternSelf("48 8D", CMemory::Direction::DOWN, 0x50).ResolveRelativeAddressSelf(0x3, 0x7).RCast<CSOM_GlobalState_s*>();
-		g_VMEntityType = Module_FindPattern(g_GameDll, "4C 8D 05 68 BB 57 01").ResolveRelativeAddressSelf(0x3, 0x7).RCast<void*>();
+
+		// Resolve audio state globals from the dispatcher function
+		// Layout: qword_1655B9640 (cmd), 9648 (time), 9650 (?), 9658 (hash), 9660 (entId), 9668 (pos)
+		if (v_Miles_DispatchEvent)
+		{
+			CMemory dispatchMem(v_Miles_DispatchEvent);
+			// qword_1655B9658 is at offset 0x4 from function start
+			g_Miles_QueuedEventHash = dispatchMem.Offset(0x4).ResolveRelativeAddressSelf(0x3, 0x7).RCast<uint64_t*>();
+			// Other globals are contiguous in memory
+			g_Miles_QueuedEventData = reinterpret_cast<uint64_t*>(reinterpret_cast<uintptr_t>(g_Miles_QueuedEventHash) - 0x18);  // 9658 - 0x18 = 9640
+			g_Miles_SoundPosition = reinterpret_cast<float*>(reinterpret_cast<uintptr_t>(g_Miles_QueuedEventHash) + 0x10);  // 9658 + 0x10 = 9668
+		}
+
+		// Resolve event table globals from v_Miles_SetEventHashFromValue (sub_14095B420)
+		// This function loads: mov r8, cs:qword_14D4E4AE8 (at +0) and lea rcx, dword_14D4E0AE8 (at +0x12)
+		if (v_Miles_SetEventHashFromValue)
+		{
+			CMemory hashFromValueMem(v_Miles_SetEventHashFromValue);
+			// qword_14D4E4AE8 at offset 0x0: mov r8, [rip+disp32] = 4C 8B 05 xx xx xx xx
+			// ResolveRelativeAddressSelf(dispOffset, instrEnd) - disp at +3, instruction ends at +7
+			// Note: Make a copy since ResolveRelativeAddressSelf modifies in-place
+			CMemory eventTableMem = hashFromValueMem;
+			g_Miles_EventTableBase = eventTableMem.ResolveRelativeAddressSelf(0x3, 0x7).RCast<uint64_t*>();
+			// dword_14D4E0AE8 at offset 0x12: lea rcx, [rip+disp32] = 48 8D 0D xx xx xx xx
+			// From instruction start at +0x12, disp at +0x15, instruction ends at +0x19
+			CMemory hashBucketMem = hashFromValueMem.Offset(0x12);
+			g_Miles_HashBucketTable = hashBucketMem.ResolveRelativeAddressSelf(0x3, 0x7).RCast<uint32_t*>();
+		}
+
+		// Resolve bank handle from v_Miles_ProcessEventEntry (sub_1409AF740)
+		// Bank handle is loaded at offset 0x31: mov rcx, [rip+disp32] = 48 8B 0D xx xx xx xx
+		if (v_Miles_ProcessEventEntry)
+		{
+			CMemory eventEntryMem(v_Miles_ProcessEventEntry);
+			// From instruction start at +0x31, disp at +0x34, instruction ends at +0x38
+			CMemory bankHandleMem = eventEntryMem.Offset(0x31);
+			g_Miles_BankHandle = bankHandleMem.ResolveRelativeAddressSelf(0x3, 0x7).RCast<uint64_t*>();
+		}
 	}
 	virtual void GetCon(void) const { }
 	virtual void Detour(const bool bAttach) const;

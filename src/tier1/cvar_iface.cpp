@@ -1,5 +1,7 @@
 #include "tier1/cvar.h"
 
+extern void ConVarStubs_Init();
+
 static bool CVar_Connect(CCvar* thisptr, CreateInterfaceFn factory)
 {
 	CCvar__Connect(thisptr, factory);
@@ -9,6 +11,7 @@ static bool CVar_Connect(CCvar* thisptr, CreateInterfaceFn factory)
 	ConCommand_InitShipped();
 	ConCommand_PurgeShipped();
 
+	ConVarStubs_Init();
 	ConVar_Register();
 
 	// CCvar::Connect() always returns true in the implementation of the engine

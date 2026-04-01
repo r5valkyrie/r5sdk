@@ -58,6 +58,7 @@ extern netkey_t* g_pNetKey;
 extern double* g_pNetTime;
 
 extern ConVar net_useRandomKey;
+extern ConVar sv_netkey;
 
 ///////////////////////////////////////////////////////////////////////////////
 class VNet : public IDetour

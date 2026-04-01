@@ -28,6 +28,7 @@ del /Q "%~dp0..\platform\cfg\system\keymap.vdf"
 del /Q "%~dp0..\platform\cfg\system\layout.ini"
 REM Remove deprecated pak files (these are no longer used).
 del /Q "%~dp0..\paks\Win32\common_empty.rpak"
+del /Q "%~dp0..\paks\Win32\common_sdk.rpak"
 del /Q "%~dp0..\paks\Win32\common_sdk2.rpak"
 del /Q "%~dp0..\paks\Win32\common_flowstate_small.rpak"
 del /Q "%~dp0..\paks\Win32\flowstate_all_loot.rpak"

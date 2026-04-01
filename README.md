@@ -3,7 +3,7 @@
 
 ## Building
 R5sdk uses the CMake project generation and build tools. For more information, visit [CMake](https://cmake.org/).<br />
-In order to compile the SDK, you will need to install Visual Studio 2017, 2019 or 2022 with:
+In order to compile the SDK, you will need to install Visual Studio 2026 with:
 * Desktop Development with C++ Package.
 * Windows SDK 10.0.10240.0 or higher.
 * C++ MFC build tools for x86 and x64.
@@ -11,11 +11,17 @@ In order to compile the SDK, you will need to install Visual Studio 2017, 2019 o
 
 Steps:
 1. Download or clone the project to anywhere on your disk.
-    1. Run `CreateSolution.bat` in the root folder, this will generate the files in `build_intermediate`.
-    2. Move all the game files in the `game` folder so that the path `game/r5apex(_ds).exe` is valid.
-2. Open `r5sdk.sln` in Visual Studio and compile the solution.
-    1. All binaries and symbols are compiled to the `game` folder.
-    2. Run `launcher.exe`, toggle and set the desired options and hit the `Launch Game` button.
+2. Open CMAKE GUI and select the project folder as source code.
+3. Press Configure and select VS 2026
+4. Once configuration is done, change these settings
+  - BOOST_REGEX_STANDALONE - Disabled
+  - OPTION_CERTAIN - Enabled
+  - OPTION_LTCG_MODE - All
+  - OPTION_RETAIL - Enabled
+  - OPTION_WARNINGS_AS_ERRORS - Disabled
+5. Open `r5sdk.slnx` in Visual Studio and compile the solution in retail x64 mode.
+  - All binaries and symbols are compiled to the `game` folder. Copy them to R5Valkyrie dir.
+  - Run `r5apex.exe`, or launch the game via R5Valkyrie launcher.
 
 ## Steamworks Integration [OPTIONAL]
 The SDK includes optional Steam integration for features like authentication, user profiles, and overlay support. **This is completely optional** - the SDK works without Steam.

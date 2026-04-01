@@ -30,11 +30,19 @@
 static ConVar miles_debug("miles_debug", "0", FCVAR_DEVELOPMENTONLY, "Enables debug prints for the Miles Sound System", "1 = print; 0 (zero) = no print");
 static ConVar miles_warnings("miles_warnings", "0", FCVAR_DEVELOPMENTONLY, "Enables warning prints for the Miles Sound System", "1 = print; 0 (zero) = no print");
 static ConVar fmod_debug("fmod_debug", "0", FCVAR_DEVELOPMENTONLY, "Enables debug prints for the FMOD Sound System", "1 = print; 0 (zero) = no print");
+ConVar* fmod_debug = &s_fmod_debug;  // Pointer for studio_backend.cpp
 
 // Level change detection
 static ConVar miles_wav_auto_stop_on_level_change("miles_wav_auto_stop_on_level_change", "1", FCVAR_RELEASE, "Automatically stop custom audio when level changes (1 = enabled, 0 = disabled)");
 
 static ICustomAudioBackend* be = nullptr;
+static bool g_milesEventsCached = false;  // Flag for deferred Miles event enumeration
+
+// Forward declarations for hash caching (used in CSOM_Initialize)
+static uint64_t ComputeMilesEventHash(const char* eventName);
+void CacheEventNameByHash(const char* eventName, uint64_t hash);
+const char* LookupEventNameByRawHash(uint64_t rawHash);
+static void CacheMilesEventNames();
 
 /*void SetEventPositionOverride(const char* eventName, const Vector3D& position)
 {
@@ -152,12 +160,26 @@ static bool CSOM_Initialize()
 			{
 				SetActiveCustomAudioBackend(s_backend);
 				be = s_backend;
-				if (fmod_debug.GetBool())
-					Msg(eDLL_T::AUDIO, "Initialized FMOD Studio backend for custom audio\n");
+				Msg(eDLL_T::AUDIO, "FMOD: Initialized FMOD Studio backend for custom audio\n");
+
+				// Pre-cache all FMOD event names with their Miles FNV-1a hashes
+				// This allows us to match events even when Miles uses pre-computed hashes
+				int eventsCached = 0;
+				s_backend->EnumerateEvents([](const char* eventPath, void* userData) {
+					int* count = static_cast<int*>(userData);
+					// Strip "event:/" prefix for Miles hash computation
+					const char* eventName = eventPath;
+					if (V_strnicmp(eventName, "event:/", 7) == 0)
+						eventName = eventPath + 7;
+
+					uint64_t hash = ComputeMilesEventHash(eventName);
+					CacheEventNameByHash(eventName, hash);
+					(*count)++;
+				}, &eventsCached);
 			}
 			else
 			{
-				if (fmod_debug.GetBool())
+				if (fmod_debug->GetBool())
 					Msg(eDLL_T::AUDIO, "Failed to initialize FMOD Studio backend; falling back to Miles for custom audio\n");
 				delete s_backend;
 				s_backend = nullptr;
@@ -337,52 +359,91 @@ void MilesBankPatch(Miles::Bank* bank, char* streamPatch, char* localizedStreamP
 	v_MilesBankPatch(bank, streamPatch, localizedStreamPatch);
 }
 
+// Forward declarations
+void CacheEventNameHash(const char* eventName, uint64_t hash);
+void CacheEventNameByHash(const char* eventName, uint64_t hash);
+const char* LookupEventNameFromHash(uint64_t hash);
+static uint64_t ComputeMilesEventHash(const char* eventName);
+
 //-----------------------------------------------------------------------------
-// Purpose: adds an audio event to the queue
+// Purpose: adds an audio event to the queue (same function as Miles_SetEventHashFromName)
+// Note: This IS the hash lookup function - it sets the event pointer for dispatch
 //-----------------------------------------------------------------------------
 static void CSOM_AddEventToQueue(const char* eventName)
 {
-	//if isnt a override and eventname dosnt contain dialogue
-	if (!DoesOverrideExist(eventName))
+	// Call original - this sets the event pointer in qword_1655B9658
+	v_CSOM_AddEventToQueue(eventName);
+
+	// Memory barrier to ensure the event hash is fully written before we read it
+	// and before Miles processes the event. This fixes weapon sounds not playing
+	// when miles_debug is disabled (the Msg() call was acting as an implicit barrier).
+	_mm_mfence();
+
+	// Cache the event pointer -> name mapping for later lookup
+	if (eventName && *eventName && g_Miles_QueuedEventHash)
 	{
-		v_CSOM_AddEventToQueue(eventName);
-
-		if (miles_debug.GetBool())
+		uint64_t eventPtr = *g_Miles_QueuedEventHash;
+		if (eventPtr > 2)
 		{
-			Msg(eDLL_T::AUDIO, "%s: queuing audio event '%s'\n", __FUNCTION__, eventName);
+			CacheEventNameHash(eventName, eventPtr);
+			if (fmod_debug->GetBool())
+				Msg(eDLL_T::AUDIO, "FMOD: Cached eventPtr 0x%llX -> '%s'\n", eventPtr, eventName);
 		}
-
-		if (miles_warnings.GetBool())
+		else if (eventPtr == 2 && be)
 		{
-			if (g_milesGlobals->queuedEventHash == 1)
-				Warning(eDLL_T::AUDIO, "%s: failed to add event to queue; invalid event name '%s'\n", __FUNCTION__, eventName);
-
-			if (g_milesGlobals->queuedEventHash == 2)
-				Warning(eDLL_T::AUDIO, "%s: failed to add event to queue; event '%s' not found.\n", __FUNCTION__, eventName);
+			// Miles says "not found" - check if FMOD has this event
+			if (be->EventExists(eventName))
+			{
+				// Get position from Miles globals (may be set even for unknown events)
+				Vector3D soundPos = { 0.0f, 0.0f, 0.0f };
+				if (g_Miles_SoundPosition)
+				{
+					float* posBase = g_Miles_SoundPosition;
+					soundPos.x = *(posBase - 1);
+					soundPos.y = posBase[0];
+					soundPos.z = posBase[1];
+				}
+				if (soundPos == Vector3D{ 0.0f, 0.0f, 0.0f })
+				{
+					if (g_vecRenderOrigin)
+						soundPos = *g_vecRenderOrigin;
+				}
+				
+				if (fmod_debug->GetBool())
+					Msg(eDLL_T::AUDIO, "FMOD: Playing FMOD-only event '%s' at (%.1f, %.1f, %.1f)\n", 
+						eventName, soundPos.x, soundPos.y, soundPos.z);
+				
+				be->PlayEvent3D(eventName, soundPos, 1.0f, 0);
+			}
 		}
-
-		return;
 	}
 
-	if (DoesOverrideExist(eventName) && !V_strstr(eventName, "diag") && !be->GetUserPropertyBool(eventName, "dont_override"))
+	if (miles_debug.GetBool())
 	{
-		FmodDebugEventPrint("CSOM_AddEventToQueue Override", eventName);
-		OverrideEventName(eventName);
-		v_CSOM_AddEventToQueue("");
-		return;
+		Msg(eDLL_T::AUDIO, "%s: queuing audio event '%s'\n", __FUNCTION__, eventName);
+	}
+	else
+	{
+		// Yield to other threads - Miles apparently needs a small window to process
+		// the event internally. Without this (or the Msg() call above), weapon sounds
+		// may not play. This replicates the timing effect of the debug print.
+		SwitchToThread();
 	}
 
+	if (miles_warnings.GetBool())
+	{
+		uint64_t hash = g_Miles_QueuedEventHash ? *g_Miles_QueuedEventHash : 0;
+		if (hash == 1)
+			Warning(eDLL_T::AUDIO, "%s: failed to add event to queue; invalid event name '%s'\n", __FUNCTION__, eventName);
 
-	if(!be->GetUserPropertyBool(eventName, "dont_override"))
-		FmodDebugEventPrint("CSOM_AddEventToQueue Error", eventName);
-
-	v_CSOM_AddEventToQueue("");
-
+		if (hash == 2 && (!be || !be->EventExists(eventName)))  // Only warn if FMOD doesn't have it either
+			Warning(eDLL_T::AUDIO, "%s: failed to add event to queue; event '%s' not found.\n", __FUNCTION__, eventName);
+	}
 };
 
 static void ProcessClientAnimEvent(__int64 a1, __int64 a2, __int64 a3, unsigned int a4, const char* a5, __int64 a6, __int64 a7)
 {
-	//if (fmod_debug.GetBool())
+	//if (fmod_debug->GetBool())
 	//{
 		//Msg(eDLL_T::AUDIO, "ProcessClientAnimEvent: a4 = %d || a5 = %s\n", a4, a5);
 	//}
@@ -390,162 +451,417 @@ static void ProcessClientAnimEvent(__int64 a1, __int64 a2, __int64 a3, unsigned 
 	v_ProcessClientAnimEvent(a1, a2, a3, a4, a5, a6, a7);
 }
 
-Vector3D lastEntityOrigin = Vector3D{ 0.0f, 0.0f, 0.0f };
-bool lastEntityOriginValid = false;
-
-static int StopSoundOnEntityForLocalPlayer(__int64 a1, const char* eventName)
-{
-	if (be->EventExists(eventName))
-	{
-		FmodDebugEventPrint("StopSoundOnEntityForLocalPlayer", eventName);
-		//be->StopSamplesForEvent(eventName);
-	}
-
-	return v_StopSoundOnEntityForLocalPlayer(a1, eventName);
-}
-
-static int EmitSoundOnEntityForLocalPlayer(__int64 a1, const char* eventName)
-{
-	if (be->EventExists(eventName))
-	{
-		if (V_strstr(eventName, "3p") || V_strstr(eventName, "3P"))
-		{
-			if (lastEntityOriginValid)
-			{
-				FmodDebugEventPrint("EmitSoundOnEntityForLocalPlayer 3P", eventName);
-				be->PlayEvent3D(eventName, lastEntityOrigin, 1.0f);
-				return 0;
-			}
-			else
-			{
-				FmodDebugEventPrint("EmitSoundOnEntityForLocalPlayer 3P No Origin", eventName);
-				be->PlayEvent3D(eventName, { 0,0,0 }, 0.0f);
-			}
-		}
-		else
-		{
-			FmodDebugEventPrint("EmitSoundOnEntityForLocalPlayer 1P", eventName);
-			OverrideEventName(eventName);
-			return 0;
-		}
-	}
-
-	return v_EmitSoundOnEntityForLocalPlayer(a1, eventName);
-}
-
-static __int64 EmitSoundOnEntity(const char *a1, unsigned int a2, __int64 a3, const char *eventName, __int64 a5)
-{
-	if (V_strcmp(a1, "EmitSoundOnEntity") == 0)
-	{
-		if (be->EventExists(eventName))
-		{
-			if (V_strstr(eventName, "3p") || V_strstr(eventName, "3P"))
-			{
-				if (lastEntityOriginValid)
-				{
-					FmodDebugEventPrint("EmitSoundOnEntity 3P", eventName);
-					be->PlayEvent3D(eventName, lastEntityOrigin, 1.0f);
-					return 0;
-				}
-				else
-				{
-					FmodDebugEventPrint("EmitSoundOnEntity 3P No Origin", eventName);
-					be->PlayEvent3D(eventName, { 0,0,0 }, 0.0f);
-				}
-			}
-			else
-			{
-				FmodDebugEventPrint("EmitSoundOnEntity 1P", eventName);
-				OverrideEventName(eventName);
-				return 0;
-			}
-		}
-	}
-
-	FmodDebugEventPrint("EmitSoundOnEntity Default Call", eventName);
-	return v_EmitSoundOnEntity(a1, a2, a3, eventName, a5);
-}
+// NOTE: Individual emit/stop hooks removed - Miles_DispatchEvent_Hook catches ALL audio events
 
 void FmodDebugEventPrint(const char* eventType, const char* eventName)
 {
-	if(fmod_debug.GetBool())
+	if(fmod_debug->GetBool())
 	{
 		Msg(eDLL_T::AUDIO, "FMOD: %s: '%s'\n", eventType, eventName);
 	}
 }
 
-static __int64 EmitSoundOnEntityImpl_Hook(__int64 a1)
+// NOTE: EmitSoundOnEntityImpl_Hook and Charge_EmitSoundOnEntityForLocalPlayer removed - dispatcher catches all
+
+//-----------------------------------------------------------------------------
+// Purpose: Helper to reverse lookup event name from hash using cached mapping
+// Note: The value at qword_1655B9658 is a pointer to event data (entry + 0x10)
+//       The actual FNV-1a hash is stored at (eventPtr - 8)
+//-----------------------------------------------------------------------------
+static std::unordered_map<uint64_t, std::string> g_hashToEventName;
+static std::mutex g_hashMapMutex;
+
+//-----------------------------------------------------------------------------
+// Purpose: Compute FNV-1a hash the same way Miles does (lowercase, . -> _)
+//-----------------------------------------------------------------------------
+static uint64_t ComputeMilesEventHash(const char* eventName)
 {
-	// Hook for sub_1409B5120 (EmitSoundOnEntity VM entry)
-	// Extract first argument value from VM frame
-	// a1+88 -> base of value array; copy first value's 16 bytes (type + payload)
-	__m128i val = *reinterpret_cast<const __m128i*>(*reinterpret_cast<const __int64*>(a1 + 88) + 16);
+	if (!eventName || !*eventName) return 1; // Empty name returns 1
 
-	// If null tag (matches decomp's 0x01000001) treat as no entity
-	if (_mm_cvtsi128_si32(val) == 0x01000001)
+	uint64_t hash = 0xCBF29CE484222325ULL; // FNV-1a 64-bit offset basis
+	const char* p = eventName;
+
+	while (*p)
 	{
-		return v_EmitSoundOnEntityImpl(a1);
+		char c = *p;
+		// Convert to lowercase
+		if (c >= 'A' && c <= 'Z')
+			c += 32;
+		// Replace . with _
+		else if (c == '.')
+			c = '_';
+
+		hash ^= static_cast<uint8_t>(c);
+		hash *= 0x100000001B3ULL; // FNV-1a 64-bit prime
+		++p;
 	}
 
-	// Resolve to entity using helper and VM entity type symbol
-	__int64 entityPtr = 0;
-	if (v_ResolveToEntity)
-	{
-		entityPtr = v_ResolveToEntity(a1, reinterpret_cast<__int64>(&val), reinterpret_cast<__int64>(g_VMEntityType));
-	}
-
-	// Try to get world origin from the resolved entity
-	if (entityPtr)
-	{
-		const IClientEntity* const ent = reinterpret_cast<const IClientEntity*>(entityPtr);
-		const Vector3D& origin = ent->GetAbsOrigin();
-		lastEntityOrigin = origin;
-		lastEntityOriginValid = true;
-	}
-	else
-	{
-		lastEntityOriginValid = false;
-	}
-
-	return v_EmitSoundOnEntityImpl(a1);
+	return hash;
 }
 
-static int Charge_EmitSoundOnEntityForLocalPlayer(__int64 a1, const char* a2, float a3)
+// Helper to get the actual FNV-1a hash from an event pointer
+// The eventPtr (qword_1655B9658) points to entry + 0x08, which IS the hash
+inline uint64_t GetRealHashFromEventPtr(uint64_t eventPtr)
 {
-	if (be->EventExists(a2))
-	{
-		FmodDebugEventPrint("Charge_EmitSoundOnEntityForLocalPlayer Override", a2);
-		OverrideEventName(a2);
-		return 0;
-	}
-
-	FmodDebugEventPrint("Charge_EmitSoundOnEntityForLocalPlayer Default Call", a2);
-	return v_Charge_EmitSoundOnEntityForLocalPlayer(a1, a2, a3);
+	// Values below a reasonable pointer threshold are likely raw hashes/IDs
+	// User-mode addresses on x64 Windows are typically >= 0x10000
+	if (eventPtr < 0x10000) return eventPtr;
+	// Event pointer points directly to the hash at entry + 0x08
+	return *reinterpret_cast<uint64_t*>(eventPtr);
 }
 
-void OverrideEventName(const char* eventName)
+void CacheEventNameHash(const char* eventName, uint64_t eventPtr)
 {
-	Vector3D soundPos = g_milesGlobals->queuedSoundPosition;
-	Vector3D playerPos = g_vecRenderOrigin ? *g_vecRenderOrigin : Vector3D{ 0.0f, 0.0f, 0.0f };
-
-	if (soundPos == Vector3D{ 0.0f, 0.0f, 0.0f })
-		soundPos = playerPos;
-
-	be->PlayEvent3D(eventName, soundPos, 1.0f);
+	if (!eventName || !*eventName || eventPtr <= 2) return;
+	uint64_t realHash = GetRealHashFromEventPtr(eventPtr);
+	std::lock_guard<std::mutex> lock(g_hashMapMutex);
+	g_hashToEventName[realHash] = eventName;
 }
 
-bool DoesOverrideExist(const char* eventName)
+// Cache using a pre-computed hash directly (for FMOD event enumeration)
+void CacheEventNameByHash(const char* eventName, uint64_t hash)
 {
-	if (be->EventExists(eventName))
+	if (!eventName || !*eventName || hash <= 2) return;
+	std::lock_guard<std::mutex> lock(g_hashMapMutex);
+	g_hashToEventName[hash] = eventName;
+}
+
+const char* LookupEventNameFromHash(uint64_t eventPtr)
+{
+	if (eventPtr <= 2) return nullptr;
+	uint64_t realHash = GetRealHashFromEventPtr(eventPtr);
+	std::lock_guard<std::mutex> lock(g_hashMapMutex);
+	auto it = g_hashToEventName.find(realHash);
+	if (it != g_hashToEventName.end())
+		return it->second.c_str();
+	return nullptr;
+}
+
+// Lookup by raw FNV-1a hash (for pre-computed hash lookups)
+const char* LookupEventNameByRawHash(uint64_t rawHash)
+{
+	if (rawHash <= 2) return nullptr;
+	std::lock_guard<std::mutex> lock(g_hashMapMutex);
+	auto it = g_hashToEventName.find(rawHash);
+	if (it != g_hashToEventName.end())
+		return it->second.c_str();
+	return nullptr;
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Enumerate all Miles events from the event table and cache their names
+// This must be called AFTER Miles initialization is complete (event table is built)
+//-----------------------------------------------------------------------------
+static void CacheMilesEventNames()
+{
+	// Check if we have the required globals
+	if (!g_Miles_EventTableBase)
 	{
-		return true;
+		Warning(eDLL_T::AUDIO, "FMOD: Cannot enumerate Miles events - g_Miles_EventTableBase pointer is null\n");
+		return;
 	}
-	else
+	
+	if (!*g_Miles_EventTableBase)
 	{
-		std::atomic_thread_fence(std::memory_order_seq_cst);
-		std::this_thread::yield();
-		return false;
+		Warning(eDLL_T::AUDIO, "FMOD: Cannot enumerate Miles events - event table not built yet (value=0)\n");
+		return;
 	}
+
+	if (!g_Miles_BankHandle)
+	{
+		Warning(eDLL_T::AUDIO, "FMOD: Cannot enumerate Miles events - g_Miles_BankHandle pointer is null\n");
+		return;
+	}
+	
+	if (!*g_Miles_BankHandle)
+	{
+		Warning(eDLL_T::AUDIO, "FMOD: Cannot enumerate Miles events - bank handle not set yet (value=0)\n");
+		return;
+	}
+
+	if (!g_Miles_HashBucketTable)
+	{
+		Warning(eDLL_T::AUDIO, "FMOD: Cannot enumerate Miles events - g_Miles_HashBucketTable pointer is null\n");
+		return;
+	}
+
+	uint64_t tableBase = *g_Miles_EventTableBase;
+	uint64_t bankHandle = *g_Miles_BankHandle;
+
+	int eventsCached = 0;
+	int eventsNewlyCached = 0;
+
+	// Iterate through all hash buckets
+	for (int bucket = 0; bucket < 4096; bucket++)
+	{
+		if (!g_Miles_HashBucketTable)
+			break;
+
+		uint32_t entryIndex = g_Miles_HashBucketTable[bucket];
+		
+		// Follow the chain of entries in this bucket
+		while (entryIndex != 0)
+		{
+			// Calculate entry address: tableBase + entryIndex * 48
+			uint64_t entryAddr = tableBase + static_cast<uint64_t>(entryIndex) * 48;
+			
+			// Read the entry structure
+			uint32_t nextIndex = *reinterpret_cast<uint32_t*>(entryAddr);        // Offset 0x00
+			uint64_t fullHash = *reinterpret_cast<uint64_t*>(entryAddr + 0x08);  // Offset 0x08
+			
+			if (fullHash > 2)
+			{
+				// Check if we already have this hash cached
+				const char* existing = LookupEventNameByRawHash(fullHash);
+				if (!existing)
+				{
+					// Try to get the event name using MilesEventGetDetails
+					// The template ID pointer is at entryAddr + 0x10
+					// MilesEventGetDetails expects a pointer to the templateId location
+					const char* eventName = nullptr;
+					int param1 = 0, param2 = 0, param3 = 0;
+					
+					__int64* templateIdPtr = reinterpret_cast<__int64*>(entryAddr + 0x10);
+					
+					// Call with 7 params - the shim layer handles compatibility
+					if (v_MilesEventGetDetails && v_MilesEventGetDetails(
+						bankHandle, 
+						reinterpret_cast<__int64>(templateIdPtr), 
+						reinterpret_cast<__int64>(&eventName), 
+						reinterpret_cast<__int64>(&param1), 
+						reinterpret_cast<__int64>(&param2), 
+						reinterpret_cast<__int64>(&param3),
+						nullptr))
+					{
+						if (eventName && *eventName)
+						{
+							// Cache with Miles' actual hash from the table (what gets passed at runtime)
+							CacheEventNameByHash(eventName, fullHash);
+							eventsNewlyCached++;
+							
+							if (fmod_debug->GetBool())
+								Msg(eDLL_T::AUDIO, "FMOD: Cached Miles event '%s' (hash=0x%llX)\n", eventName, fullHash);
+						}
+					}
+				}
+				else
+				{
+					eventsCached++;
+				}
+			}
+			
+			// Move to next entry in chain
+			entryIndex = nextIndex;
+		}
+	}
+
+	if (fmod_debug->GetBool())
+	{
+		Msg(eDLL_T::AUDIO, "FMOD: Miles event enumeration complete - %d already cached, %d newly cached\n", 
+			eventsCached, eventsNewlyCached);
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Core event dispatcher hook - catches ALL Miles audio events
+// Input  : action - 1=play, 2=stop, 3=other
+//-----------------------------------------------------------------------------
+static __int64 Miles_DispatchEvent_Hook(unsigned __int16 action)
+{
+	// Deferred Miles event enumeration - table is now built
+	if (!g_milesEventsCached)
+	{
+		if (fmod_debug->GetBool())
+		{
+			Msg(eDLL_T::AUDIO, "FMOD: Checking Miles event table... g_Miles_EventTableBase=%p, value=%llX\n", 
+				(void*)g_Miles_EventTableBase, g_Miles_EventTableBase ? *g_Miles_EventTableBase : 0);
+		}
+		
+		if (g_Miles_EventTableBase && *g_Miles_EventTableBase)
+		{
+			g_milesEventsCached = true;
+			CacheMilesEventNames();
+		}
+	}
+
+	// Get the queued event hash from the correct global (qword_1655B9658)
+	uint64_t eventHash = g_Miles_QueuedEventHash ? *g_Miles_QueuedEventHash : 0;
+	
+	// Debug: always log what we're seeing
+	if (fmod_debug->GetBool())
+	{
+		const char* cachedName = (eventHash > 2) ? LookupEventNameFromHash(eventHash) : nullptr;
+		if (fmod_debug->GetBool())
+		{
+			Msg(eDLL_T::AUDIO, "FMOD: Miles_DispatchEvent action=%d hash=0x%llX name='%s'\n", 
+				action, eventHash, cachedName ? cachedName : "(unknown)");
+		}
+	}
+	
+	// Ignore invalid hashes (1=empty name, 2=not found)
+	if (eventHash > 2 && be)
+	{
+		// Try to find cached event name for this hash
+		const char* cachedName = LookupEventNameFromHash(eventHash);
+		
+		if (action == 1) // PLAY
+		{
+			if (cachedName && be->EventExists(cachedName))
+			{
+				// Skip dialogue events and events marked as dont_override
+				if (V_strstr(cachedName, "diag") || be->GetUserPropertyBool(cachedName, "dont_override"))
+				{
+					// Let Miles handle these
+					return v_Miles_DispatchEvent(action);
+				}
+				
+				// Get position from Miles globals
+				// Layout: qword_1655B9660 high=X, qword_1655B9668 low=Y high=Z
+				Vector3D soundPos = { 0.0f, 0.0f, 0.0f };
+				if (g_Miles_SoundPosition)
+				{
+					// g_Miles_SoundPosition points to qword_1655B9668
+					// X is at qword_1655B9660 + 4 (previous qword's high dword)
+					float* posBase = g_Miles_SoundPosition;
+					float posX = *(posBase - 1);  // HIDWORD of qword_1655B9660
+					float posY = posBase[0];       // LODWORD of qword_1655B9668
+					float posZ = posBase[1];       // HIDWORD of qword_1655B9668
+					soundPos = { posX, posY, posZ };
+				}
+				
+				// Debug: log the position we're using
+				if (fmod_debug->GetBool())
+				{
+					Msg(eDLL_T::AUDIO, "FMOD: Sound position: (%.1f, %.1f, %.1f)\n", 
+						soundPos.x, soundPos.y, soundPos.z);
+				}
+				
+				// If position is zero, use player position as fallback
+				if (soundPos == Vector3D{ 0.0f, 0.0f, 0.0f })
+				{
+					if (g_vecRenderOrigin)
+						soundPos = *g_vecRenderOrigin;
+					if (fmod_debug->GetBool())
+						Msg(eDLL_T::AUDIO, "FMOD: Using player pos fallback: (%.1f, %.1f, %.1f)\n", 
+							soundPos.x, soundPos.y, soundPos.z);
+				}
+				
+				FmodDebugEventPrint("Miles_DispatchEvent PLAY (override)", cachedName);
+				be->PlayEvent3D(cachedName, soundPos, 1.0f, eventHash);
+				
+				// Block Miles from playing its version - we're overriding
+				return 0;
+			}
+		}
+		else if (action == 2) // STOP
+		{
+			// Stop the corresponding FMOD instance
+			be->StopEventByHash(eventHash, false);
+		}
+	}
+	
+	// Call original for events we're not overriding
+	return v_Miles_DispatchEvent(action);
+}
+
+//-----------------------------------------------------------------------------\n// NOTE: Miles_SetEventHashFromName_Hook removed - same function as CSOM_AddEventToQueue\n// The caching is now done in CSOM_AddEventToQueue hook above\n//-----------------------------------------------------------------------------\n\n//-----------------------------------------------------------------------------
+// Purpose: Hook for direct hash-based event lookup (sub_14095B420)
+// This catches events that use pre-computed hashes instead of string names
+//-----------------------------------------------------------------------------
+static void Miles_SetEventHashFromValue_Hook(__int64 preComputedHash)
+{
+	// Try to find cached name for this hash BEFORE the lookup
+	const char* cachedName = LookupEventNameByRawHash(preComputedHash);
+	
+	// Call original - this will set eventPtr in g_Miles_QueuedEventHash
+	v_Miles_SetEventHashFromValue(preComputedHash);
+	
+	// If we found a cached name, log success
+	if (cachedName && g_Miles_QueuedEventHash)
+	{
+		uint64_t eventPtr = *g_Miles_QueuedEventHash;
+		if (eventPtr > 2)
+		{
+			if (fmod_debug->GetBool())
+				Msg(eDLL_T::AUDIO, "FMOD: HashLookup: hash=0x%llX -> '%s'\n", preComputedHash, cachedName);
+		}
+	}
+	else if (g_Miles_QueuedEventHash && *g_Miles_QueuedEventHash > 2)
+	{
+		// Hash lookup succeeded in Miles but we don't have it cached - try to cache it now
+		uint64_t eventPtr = *g_Miles_QueuedEventHash;
+		
+		// Try to get the event name using MilesEventGetDetails
+		// eventPtr points to entry + 0x08, so template ID is at eventPtr + 0x08
+		if (g_Miles_BankHandle && *g_Miles_BankHandle && v_MilesEventGetDetails)
+		{
+			const char* eventName = nullptr;
+			int param1 = 0, param2 = 0, param3 = 0;
+			
+			__int64* templateIdPtr = reinterpret_cast<__int64*>(eventPtr + 0x08);
+			
+			if (v_MilesEventGetDetails(
+				*g_Miles_BankHandle,
+				reinterpret_cast<__int64>(templateIdPtr),
+				reinterpret_cast<__int64>(&eventName),
+				reinterpret_cast<__int64>(&param1),
+				reinterpret_cast<__int64>(&param2),
+				reinterpret_cast<__int64>(&param3),
+				nullptr))
+			{
+				if (eventName && *eventName)
+				{
+					// Cache by preComputedHash so next lookup succeeds
+					CacheEventNameByHash(eventName, preComputedHash);
+					if (fmod_debug->GetBool())
+						Msg(eDLL_T::AUDIO, "FMOD: HashLookup (late cache): hash=0x%llX -> '%s'\n", preComputedHash, eventName);
+					return;
+				}
+			}
+		}
+		
+		if (fmod_debug->GetBool())
+			Msg(eDLL_T::AUDIO, "FMOD: HashLookup: hash=0x%llX -> (uncached)\n", preComputedHash);
+	}
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Stop event by hash signal hook - catches signal-based stops
+//-----------------------------------------------------------------------------
+static __int64 Miles_StopEventByHash_Hook(__int64 eventHash)
+{
+	if (eventHash > 2 && be)
+	{
+		const char* cachedName = LookupEventNameFromHash(eventHash);
+		if (fmod_debug->GetBool())
+		{
+			if (cachedName)
+				Msg(eDLL_T::AUDIO, "FMOD: Miles_StopEventByHash: '%s' (hash=0x%llX)\n", cachedName, eventHash);
+			else
+				Msg(eDLL_T::AUDIO, "FMOD: Miles_StopEventByHash: (hash=0x%llX)\n", eventHash);
+		}
+		
+		be->StopEventByHash(eventHash, false);
+	}
+	
+	return v_Miles_StopEventByHash(eventHash);
+}
+
+//-----------------------------------------------------------------------------
+// Purpose: Stop all sounds hook - stops all FMOD sounds too
+//-----------------------------------------------------------------------------
+static __int64 Miles_StopAllSounds_Hook(__int64 a1, __int64 a2, __int64 filterType)
+{
+	if (be)
+	{
+		if (fmod_debug->GetBool())
+			Msg(eDLL_T::AUDIO, "FMOD: Miles_StopAllSounds (filter=%lld)\n", filterType);
+		
+		// Stop all FMOD sounds immediately when Miles stops all
+		be->StopAll(true);
+	}
+	
+	return v_Miles_StopAllSounds(a1, a2, filterType);
 }
 
 
@@ -856,100 +1172,6 @@ static s32 CSOM_MilesAsync_FileCancel(MilesAsyncRead* const request)
 	return CSOM_MilesAsync_FileStatus(request, RR_WAIT_INFINITE);
 }
 
-/*//-----------------------------------------------------------------------------
-// Purpose: Event build hook
-//-----------------------------------------------------------------------------
-// Global event name for Northstar hooks
-// Event processing function - apply overrides after original function completes
-static char __fastcall h_Sub_18002AAF0(__int64 a1, __int64 a2, __int64 a3, __int64 j)
-{
-	// Call original function first to let Miles set up structures
-	char result = v_h_Sub_18002AAF0(a1, a2, a3, j);
-
-	// Now safely apply overrides after Miles has finished processing
-	__try
-	{
-		const char* name = **(const char***)(*(_QWORD*)(32i64 * *(unsigned __int16*)(a2 + 178) + *(_QWORD*)(a1 + 2216) + 8));
-
-		const void* overridePtr = nullptr;
-		unsigned overrideLen = 0;
-		if (GetAudioOverrideManagerNorthstar()->TryGetOverrideForEvent(name, overridePtr, overrideLen))
-		{
-			if (wav_debug.GetBool())
-				Msg(eDLL_T::AUDIO, "[NORTHSTAR] Applying override for event: %s (post-processing)\n", name);
-
-			// Apply override after original function completed - should be safer
-			__try
-			{
-				// Event structure cast (from decompiled code: v7 = (unsigned __int16 *)a2)
-				unsigned __int16* eventStruct = (unsigned __int16*)a2;
-				
-				// Get first sample index from event structure (from decompiled: i = *v7)
-				unsigned __int16 sampleIndex = *eventStruct;
-				
-				if (sampleIndex != 0xFFFF)  // Valid sample index
-				{
-					// Calculate sample structure address (from decompiled code)
-					__int64 sampleArrayBase = *(_QWORD*)(a1 + 1872);
-					__int64 sampleStructure = sampleArrayBase + 160i64 * sampleIndex;
-					
-					if (wav_debug.GetBool())
-						Msg(eDLL_T::AUDIO, "[NORTHSTAR] Applying to sample structure at: %p (index %u)\n", 
-							(void*)sampleStructure, sampleIndex);
-					
-					// Apply override after Miles processing is complete
-					__try
-					{
-						// Apply Northstar offsets to sample structure
-						*(void**)(sampleStructure + 0xE8) = const_cast<void*>(overridePtr);
-						*(unsigned int*)(sampleStructure + 0xF0) = overrideLen;
-						
-						if (wav_debug.GetBool())
-							Msg(eDLL_T::AUDIO, "[NORTHSTAR] Successfully applied override - Buffer: %p, Len: %u\n",
-								overridePtr, overrideLen);
-					}
-					__except(EXCEPTION_EXECUTE_HANDLER)
-					{
-						if (wav_debug.GetBool())
-							Msg(eDLL_T::AUDIO, "[NORTHSTAR] Failed to write to sample structure %p\n", 
-								(void*)sampleStructure);
-					}
-				}
-				else
-				{
-					if (wav_debug.GetBool())
-						Msg(eDLL_T::AUDIO, "[NORTHSTAR] No valid sample found in event structure\n");
-				}
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-				if (wav_debug.GetBool())
-					Msg(eDLL_T::AUDIO, "[NORTHSTAR] Failed to access event structure for override\n");
-			}
-		}
-	}
-	__except(EXCEPTION_EXECUTE_HANDLER)
-	{
-		if (wav_debug.GetBool())
-			Msg(eDLL_T::AUDIO, "[NORTHSTAR] Exception during event name extraction\n");
-	}
-	
-	return result;
-}
-
-static __int64 __fastcall MilesEventBuild_Hook(float* a1, __int64 a2, __int64 a3)
-{
-	return v_MilesEventBuild(a1, a2, a3);
-}
-*/
-
-static __int64 sub_1409A7570_Hook(__int64 a1, char* a2)
-{
-	Msg(eDLL_T::AUDIO, "sub_1409A7570_Hook: %s\n", a2);
-	
-	return v_sub_1409A7570(a1, a2);
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 void MilesCore::Detour(const bool bAttach) const
 {
@@ -962,14 +1184,19 @@ void MilesCore::Detour(const bool bAttach) const
 	DetourSetup(&v_CSOM_MilesAsync_FileRead, &CSOM_MilesAsync_FileRead, bAttach);
 	DetourSetup(&v_CSOM_MilesAsync_FileStatus, &CSOM_MilesAsync_FileStatus, bAttach);
 	DetourSetup(&v_CSOM_MilesAsync_FileCancel, &CSOM_MilesAsync_FileCancel, bAttach);
-	DetourSetup(&v_CSOM_AddEventToQueue, &CSOM_AddEventToQueue, bAttach);
+	DetourSetup(&v_CSOM_AddEventToQueue, &CSOM_AddEventToQueue, bAttach);  // This is also the hash lookup function
 	DetourSetup(&v_ProcessClientAnimEvent, &ProcessClientAnimEvent, bAttach);
-	DetourSetup(&v_StopSoundOnEntityForLocalPlayer, &StopSoundOnEntityForLocalPlayer, bAttach);
-	DetourSetup(&v_EmitSoundOnEntityForLocalPlayer, &EmitSoundOnEntityForLocalPlayer, bAttach);
-	DetourSetup(&v_Charge_EmitSoundOnEntityForLocalPlayer, &Charge_EmitSoundOnEntityForLocalPlayer, bAttach);
-	DetourSetup(&v_EmitSoundOnEntity, &EmitSoundOnEntity, bAttach);
-	DetourSetup(&v_EmitSoundOnEntityImpl, &EmitSoundOnEntityImpl_Hook, bAttach);
-	DetourSetup(&v_sub_1409A7570, &sub_1409A7570_Hook, bAttach);
+
+	// Core Miles audio event hooks - catch ALL audio events at the source
+	if (v_Miles_DispatchEvent)
+		DetourSetup(&v_Miles_DispatchEvent, &Miles_DispatchEvent_Hook, bAttach);
+	// NOTE: Miles_SetEventHashFromName is the same function as CSOM_AddEventToQueue, already hooked above
+	if (v_Miles_SetEventHashFromValue)
+		DetourSetup(&v_Miles_SetEventHashFromValue, &Miles_SetEventHashFromValue_Hook, bAttach);
+	if (v_Miles_StopEventByHash)
+		DetourSetup(&v_Miles_StopEventByHash, &Miles_StopEventByHash_Hook, bAttach);
+	if (v_Miles_StopAllSounds)
+		DetourSetup(&v_Miles_StopAllSounds, &Miles_StopAllSounds_Hook, bAttach);
 
 	if (bAttach)
 	{
@@ -983,5 +1210,123 @@ void MilesCore::Detour(const bool bAttach) const
 		// on all other enums are still identical and do not need to be fixes.
 		mem.Offset(0x762).Patch({ 0x4 });
 		mem.Offset(0x78B).Patch({ 0xC });
+
+		// Miles 10.0.62 changed internal listener data structures causing a crash
+		// when the audio spatialization function tries to clear listener bitmask bits.
+		// The crash occurs at offset 0x4A2 with instruction: sub [rbx+r11*8], rax
+		// 
+		// The bug is that the old code does a direct memory subtraction which can cause
+		// issues. The fix (from newer Miles versions) is to:
+		//   1. Subtract from the register copy (R9) instead of memory
+		//   2. Write the result back to memory
+		//
+		// Original (buggy):   sub [rbx+r11*8], rax      ; 4A 29 04 DB
+		// Fixed:              sub r9, rax               ; 49 29 C1
+		//                     mov [rbx+r11*8], r9       ; 4E 89 0C DB
+		//
+		// Since the fixed code is larger (7 bytes vs 4 bytes), we use a code cave
+		// (trampoline) to hold the fixed instructions and redirect execution there.
+		// IMPORTANT: The code cave MUST be allocated within ±2GB of the target to use
+		// rel32 jumps, so we search for free memory near the function.
+		if (v_Miles_ProcessListenerMasks)
+		{
+			CMemory listenerMem(v_Miles_ProcessListenerMasks);
+			static uint8_t* s_listenerMaskCodeCave = nullptr;
+			if (!s_listenerMaskCodeCave)
+			{
+				/*// We need to allocate executable memory within ±2GB of the patch site
+				// to use 32-bit relative jumps. Search for a free region near the function.
+				const uintptr_t targetAddr = listenerMem.Offset(0x4A2).GetPtr();
+				const SIZE_T allocSize = 64;
+				
+				// Try to allocate within ±2GB range (start searching 1GB before target)
+				uintptr_t searchStart = (targetAddr > 0x40000000) ? (targetAddr - 0x40000000) : 0x10000;
+				uintptr_t searchEnd = targetAddr + 0x40000000;
+				
+				MEMORY_BASIC_INFORMATION mbi;
+				for (uintptr_t addr = searchStart; addr < searchEnd; addr += mbi.RegionSize)
+				{
+					if (VirtualQuery(reinterpret_cast<LPCVOID>(addr), &mbi, sizeof(mbi)) == 0)
+					{
+						addr += 0x10000;  // Skip on error
+						continue;
+					}
+					
+					if (mbi.State == MEM_FREE && mbi.RegionSize >= allocSize)
+					{
+						// Try to allocate at this address
+						uintptr_t alignedAddr = (reinterpret_cast<uintptr_t>(mbi.BaseAddress) + 0xFFFF) & ~0xFFFF;
+						s_listenerMaskCodeCave = reinterpret_cast<uint8_t*>(
+							VirtualAlloc(reinterpret_cast<LPVOID>(alignedAddr), allocSize, 
+							             MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+						
+						if (s_listenerMaskCodeCave)
+						{
+							// Verify it's within rel32 range (±2GB)
+							intptr_t distance = reinterpret_cast<intptr_t>(s_listenerMaskCodeCave) - 
+							                    static_cast<intptr_t>(targetAddr);
+							if (distance < INT32_MIN || distance > INT32_MAX)
+							{
+								// Too far, free and try again
+								VirtualFree(s_listenerMaskCodeCave, 0, MEM_RELEASE);
+								s_listenerMaskCodeCave = nullptr;
+								continue;
+							}
+							break;  // Found suitable memory
+						}
+					}
+				}*/
+				
+				/*if (s_listenerMaskCodeCave)
+				{
+					// Build the fixed code sequence in the code cave:
+					// sub r9, rax         ; 49 29 C1 (3 bytes) - subtract from register
+					// mov [rbx+r11*8], r9 ; 4E 89 0C DB (4 bytes) - write result to memory
+					// jmp back_to_loop    ; E9 xx xx xx xx (5 bytes) - return to loop start
+					
+					s_listenerMaskCodeCave[0] = 0x49;  // REX.WB
+					s_listenerMaskCodeCave[1] = 0x29;  // SUB r/m64, r64
+					s_listenerMaskCodeCave[2] = 0xC1;  // ModR/M: r9, rax
+					
+					s_listenerMaskCodeCave[3] = 0x4E;  // REX.WRX
+					s_listenerMaskCodeCave[4] = 0x89;  // MOV r/m64, r64
+					s_listenerMaskCodeCave[5] = 0x0C;  // ModR/M: [rbx+r11*8]
+					s_listenerMaskCodeCave[6] = 0xDB;  // SIB: scale=8, index=r11, base=rbx
+					
+					// Calculate jump offset back to loop start (offset 0x477 in the function)
+					// The original jmp short at 0x4A6 jumps to 0x477 (the bsf instruction)
+					const uintptr_t loopStartAddr = listenerMem.Offset(0x477).GetPtr();
+					const uintptr_t jmpInstructionEnd = reinterpret_cast<uintptr_t>(&s_listenerMaskCodeCave[12]);
+					const int32_t jmpOffset = static_cast<int32_t>(loopStartAddr - jmpInstructionEnd);
+					
+					s_listenerMaskCodeCave[7] = 0xE9;  // JMP rel32
+					*reinterpret_cast<int32_t*>(&s_listenerMaskCodeCave[8]) = jmpOffset;
+					
+					// Now patch the original code at offset 0x4A2 to jump to our code cave
+					// We have 6 bytes available (4 bytes crash instr + 2 bytes jmp short)
+					// Patch with: jmp rel32 to codeCave (5 bytes) + nop (1 byte)
+					const uintptr_t patchAddr = listenerMem.Offset(0x4A2).GetPtr();
+					const uintptr_t caveAddr = reinterpret_cast<uintptr_t>(s_listenerMaskCodeCave);
+					const int32_t caveOffset = static_cast<int32_t>(caveAddr - (patchAddr + 5));
+					
+					uint8_t patchBytes[6];
+					patchBytes[0] = 0xE9;  // JMP rel32
+					*reinterpret_cast<int32_t*>(&patchBytes[1]) = caveOffset;
+					patchBytes[5] = 0x90;  // NOP (fills the remaining byte from old jmp short)
+					
+					listenerMem.Offset(0x4A2).Patch({ patchBytes[0], patchBytes[1], patchBytes[2], 
+					                                   patchBytes[3], patchBytes[4], patchBytes[5] });
+					
+					Msg(eDLL_T::AUDIO, "Miles listener mask fix applied via code cave at %p (target: %p)\n", 
+						static_cast<void*>(s_listenerMaskCodeCave), reinterpret_cast<void*>(targetAddr));
+				}
+				else*/
+				{
+					//Above is broken will fix later, for now it seems the simplest solution is to NOP out the crash instruction
+					//Dosnt look like it has any adverse effects on audio
+					listenerMem.Offset(0x4A2).Patch({ 0x90, 0x90, 0x90, 0x90 });
+				}
+			}
+		}
 	}
 }

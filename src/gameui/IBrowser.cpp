@@ -1049,6 +1049,9 @@ void CBrowser::UpdateHostingStatus(void)
             ModSystem()->UnlockModList();
         }
 
+        // Set mods profile
+        netGameServer.modsProfile = sv_modsProfile.GetString();
+
         SendHostingPostRequest(netGameServer);
         break;
     }

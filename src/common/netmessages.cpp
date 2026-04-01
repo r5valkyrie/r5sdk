@@ -15,6 +15,11 @@
 #include "common/callback.h"
 #include "game/shared/usermessages.h"
 
+#ifndef CLIENT_DLL
+#include "engine/client/client.h"
+#include "game/shared/scriptremotefunctions_server.h"
+#endif
+
 #ifndef DEDICATED
 #include "game/client/hud_basechat.h"
 #endif
@@ -132,6 +137,57 @@ bool SVC_SystemSayText::Process(void)
 			// Regular message - use default handling
 			(*g_ppHudChat)->PrintSystemMsg(m_szPrefix, m_szMessage, m_bAdminMsg);
 		}
+	}
+#endif
+	return true;
+}
+
+///////////////////////////////////////////////////////////////////////////////////
+// NET_ScriptMessage
+///////////////////////////////////////////////////////////////////////////////////
+bool NET_ScriptMessage::ReadFromBuffer(bf_read* buffer)
+{
+	m_bIsTyped = buffer->ReadOneBit() != 0;
+
+	const int nPayloadBytes = buffer->ReadShort();
+	if (nPayloadBytes < 0 || nPayloadBytes > SCRIPT_MESSAGE_BUFFER_SIZE)
+	{
+		Warning(eDLL_T::ENGINE, "NET_ScriptMessage: invalid payload size %d\n", nPayloadBytes);
+		return false;
+	}
+
+	if (!buffer->ReadBytes(m_Buffer, nPayloadBytes))
+	{
+		Warning(eDLL_T::ENGINE, "NET_ScriptMessage: failed to read %d payload bytes\n", nPayloadBytes);
+		return false;
+	}
+
+	m_DataIn.StartReading(m_Buffer, nPayloadBytes, 0, nPayloadBytes * 8);
+	return !buffer->IsOverflowed();
+}
+
+bool NET_ScriptMessage::WriteToBuffer(bf_write* buffer)
+{
+	buffer->WriteOneBit(m_bIsTyped ? 1 : 0);
+
+	const int nPayloadBytes = (m_DataOut.GetNumBitsWritten() + 7) >> 3;
+	buffer->WriteShort(nPayloadBytes);
+	buffer->WriteBytes(m_DataOut.GetData(), nPayloadBytes);
+
+	return !buffer->IsOverflowed();
+}
+
+bool NET_ScriptMessage::Process(void)
+{
+#ifndef CLIENT_DLL
+	if (m_pMessageHandler)
+	{
+		// m_pMessageHandler is INetChannelHandler*, need static_cast for proper
+		// pointer adjustment with CClient's multiple inheritance
+		CClient* pClient = static_cast<CClient*>(m_pMessageHandler);
+
+		if (!ScriptRemoteServer_ProcessMessage(pClient, this))
+			Warning(eDLL_T::SERVER, "NET_ScriptMessage: failed to process message\n");
 	}
 #endif
 	return true;

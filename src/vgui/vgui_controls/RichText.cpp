@@ -38,7 +38,7 @@ void vgui::RichTextCommon::SetText(const char* text)
     }
     else
     {
-        this->SetText((const char*)nullptr);
+        this->SetText((wchar_t*)nullptr);
     }
 }
 

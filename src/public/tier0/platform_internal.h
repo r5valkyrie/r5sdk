@@ -4,6 +4,7 @@
 inline void(*v_InitTime)(void);
 inline double(*v_Plat_FloatTime)(void);
 inline uint64_t(*v_Plat_MSTime)(void);
+inline void(*v_Plat_LaunchExternalWebBrowser)(const char* urlText, unsigned int flags);
 
 inline bool* s_pbTimeInitted = nullptr;
 inline double* g_pPerformanceCounterToMS = nullptr;
@@ -19,6 +20,7 @@ class VPlatform : public IDetour
 		LogFunAdr("InitTime", v_InitTime);
 		LogFunAdr("Plat_FloatTime", v_Plat_FloatTime);
 		LogFunAdr("Plat_MSTime", v_Plat_MSTime);
+		LogFunAdr("Plat_LaunchExternalWebBrowser", v_Plat_LaunchExternalWebBrowser);
 		LogVarAdr("s_bTimeInitted", s_pbTimeInitted);
 		LogVarAdr("g_PerformanceCounterToMS", g_pPerformanceCounterToMS);
 		LogVarAdr("g_PerformanceFrequency", g_pPerformanceFrequency);
@@ -30,6 +32,7 @@ class VPlatform : public IDetour
 		Module_FindPattern(g_GameDll, "48 83 EC 28 80 3D ?? ?? ?? ?? ?? 75 4C").GetPtr(v_InitTime);
 		Module_FindPattern(g_GameDll, "48 83 EC 28 80 3D ?? ?? ?? ?? ?? 75 05 E8 ?? ?? ?? ?? 80 3D ?? ?? ?? ?? ?? 74 1D").GetPtr(v_Plat_FloatTime);
 		Module_FindPattern(g_GameDll, "48 83 EC 28 80 3D ?? ?? ?? ?? ?? 75 05 E8 ?? ?? ?? ?? 80 3D ?? ?? ?? ?? ?? 74 2A").GetPtr(v_Plat_MSTime);
+		Module_FindPattern(g_GameDll, "40 53 48 83 EC 30 80 3D ?? ?? ?? ?? 00 8B DA 0F 84 ?? ?? ?? ?? 80 3D ?? ?? ?? ?? 00 0F 84 ?? ?? ?? ?? F6 C3 02").GetPtr(v_Plat_LaunchExternalWebBrowser);
 	}
 	virtual void GetVar(void) const
 	{
@@ -41,7 +44,7 @@ class VPlatform : public IDetour
 		g_flErrorTimeStamp = Module_FindPattern(g_GameDll, "0F 57 C0 F2 0F 11 05 ?? ?? ?? ?? C3").FindPatternSelf("F2 0F").ResolveRelativeAddressSelf(0x4, 0x8).RCast<double*>();
 	}
 	virtual void GetCon(void) const { }
-	virtual void Detour(const bool bAttach) const { }
+	virtual void Detour(const bool bAttach) const;
 };
 ///////////////////////////////////////////////////////////////////////////////
 

@@ -29,8 +29,17 @@ add_sources( SOURCE_GROUP "Animation"
     "shared/animation.h"
 )
 
+add_sources( SOURCE_GROUP "Activity"
+    "shared/activity.cpp"
+    "shared/activity.h"
+    "shared/activitymodifier.cpp"
+    "shared/activitymodifier.h"
+)
+
 add_sources( SOURCE_GROUP "Effects"
     "shared/status_effect.h"
+    "shared/status_effects_sdk.cpp"
+    "shared/status_effects_sdk.h"
     "shared/particleproperty.h"
     "shared/particle_parse.h"
 )
@@ -48,10 +57,24 @@ add_sources( SOURCE_GROUP "Player"
 add_sources( SOURCE_GROUP "Weapon"
     "shared/r1/weapon_playerdata.h"
     "shared/r1/weapon_parse.h"
+    "shared/r1/blast_pattern.cpp"
+    "shared/r1/blast_pattern.h"
     "shared/r1/weapon_bolt.cpp"
     "shared/r1/weapon_bolt.h"
     "shared/r1/grapple.h"
     "shared/r1/smartammo.h"
+    "shared/weapon_script_vars.cpp"
+    "shared/weapon_script_vars.h"
+    "shared/weapon_heat.cpp"
+    "shared/weapon_heat.h"
+    "shared/globalnonrewind_vars.cpp"
+    "shared/globalnonrewind_vars.h"
+    "shared/deathfield_system.cpp"
+    "shared/deathfield_system.h"
+    "shared/highlight_context.cpp"
+    "shared/highlight_context.h"
+    "shared/dt_injection.cpp"
+    "shared/dt_injection.h"
 )
 
 add_sources( SOURCE_GROUP "Network"
@@ -84,6 +107,10 @@ add_sources( SOURCE_GROUP "Script"
     "shared/vscript_debug_overlay_shared.cpp"
     "shared/vscript_debug_overlay_shared.h"
     "shared/vscript_gamedll_defs.h"
+    "shared/scriptremotefunctions.cpp"
+    "shared/scriptremotefunctions.h"
+    "shared/scriptremotefunctions_shared.cpp"
+    "shared/scriptremotefunctions_shared.h"
 )
 
 add_sources( SOURCE_GROUP "ModSystem"
@@ -173,6 +200,8 @@ add_sources( SOURCE_GROUP "Weapon"
 add_sources( SOURCE_GROUP "Script"
     "server/vscript_server.cpp"
     "server/vscript_server.h"
+    "shared/scriptremotefunctions_server.cpp"
+    "shared/scriptremotefunctions_server.h"
 )
 
 add_sources( SOURCE_GROUP "Physics"
@@ -243,6 +272,11 @@ add_sources( SOURCE_GROUP "Input"
     "client/kbutton.h"
 )
 
+add_sources( SOURCE_GROUP "Leaf System"
+    "client/clientleafsystem.cpp"
+    "client/clientleafsystem.h"
+)
+
 add_sources( SOURCE_GROUP "Rendering"
     "client/enginesprite.h"
     "client/hud.h"
@@ -266,11 +300,43 @@ add_sources( SOURCE_GROUP "Utility"
 add_sources( SOURCE_GROUP "Script"
     "client/vscript_client.cpp"
     "client/vscript_client.h"
+    "client/vscript_colorpalette.cpp"
+    "client/vscript_colorpalette.h"
+    "client/vscript_hud.cpp"
+    "client/vscript_hud.h"
+    "client/vscript_player.cpp"
+    "client/vscript_player.h"
+    "client/vscript_remotefunctions.cpp"
+    "client/vscript_remotefunctions.h"
+    "client/concommandcallback.cpp"
+    "client/concommandcallback.h"
+    "client/convar_stubs.cpp"
+    "client/scriptnetdata_client.cpp"
+    "client/scriptnetdata_client.h"
+    "client/particle_effects_sdk.cpp"
+    "client/particle_effects_sdk.h"
+)
+
+add_sources( SOURCE_GROUP "Viewmodel"
+    "client/viewmodel_poseparam.cpp"
+    "client/viewmodel_poseparam.h"
 )
 
 add_sources( SOURCE_GROUP "Hud"
     "client/hud_basechat.cpp"
     "client/hud_basechat.h"
+)
+
+add_sources( SOURCE_GROUP "Zipline"
+    "client/c_zipline_fix.cpp"
+    "client/c_zipline_fix.h"
+)
+
+add_sources( SOURCE_GROUP "RUI"
+    "client/ruitracks.cpp"
+    "client/ruitracks.h"
+    "client/rui_walltime.cpp"
+    "client/rui_walltime.h"
 )
 
 file( GLOB GAME_CLIENT_PUBLIC_HEADERS

@@ -352,3 +352,5 @@ MigrationBackup/
 
 # Steamworks SDK - not distributed due to licensing
 src/thirdparty/steamworks/
+/binary
+/build

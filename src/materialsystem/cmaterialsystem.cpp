@@ -157,13 +157,21 @@ void* CMaterialSystem::SwapBuffers(CMaterialSystem* pMatSys)
 //-----------------------------------------------------------------------------
 static ConVar mat_alwaysComplain("mat_alwaysComplain", "0", FCVAR_RELEASE | FCVAR_MATERIAL_SYSTEM_THREAD, "Always complain when a material is missing");
 
+static bool Mat_ShouldSuppressMissingLog(const char* const pMaterialName)
+{
+	return (pMaterialName && !V_stricmp(pMaterialName, "error"));
+}
+
 CMaterialGlue* CMaterialSystem::FindMaterialEx(CMaterialSystem* pMatSys, const char* pMaterialName, uint8_t nMaterialType, int nUnk, bool bComplain)
 {
 	CMaterialGlue* pMaterial = CMaterialSystem__FindMaterialEx(pMatSys, pMaterialName, nMaterialType, nUnk, bComplain);
 
 	if ((bComplain || mat_alwaysComplain.GetBool()) && pMaterial->IsErrorMaterial())
 	{
-		Error(eDLL_T::MS, NO_ERROR, "Material \"%s\" not found; replacing with \"%s\".\n", pMaterialName, pMaterial->GetName());
+		if (!Mat_ShouldSuppressMissingLog(pMaterialName))
+		{
+			Error(eDLL_T::MS, NO_ERROR, "Material \"%s\" not found; replacing with \"%s\".\n", pMaterialName, pMaterial->GetName());
+		}
 	}
 	return pMaterial;
 }

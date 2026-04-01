@@ -20,11 +20,11 @@ static void ParticleSystem_Init()
 
 	if (!loadUnbaked || CommandLine()->FindParm("-bakedparticles"))
 	{
-		const char* const pakName = "effects_sdk.rpak";
+		/*const char* const pakName = "effects_sdk.rpak";
 		const PakHandle_t pakId = g_pakLoadApi->LoadAsyncAndWait(pakName, AlignedMemAlloc(), 3, nullptr);
 		
 		if (pakId == PAK_INVALID_HANDLE)
-			Error(eDLL_T::ENGINE, EXIT_FAILURE, "Failed to load pak file '%s'\n", pakName);
+			Error(eDLL_T::ENGINE, EXIT_FAILURE, "Failed to load pak file '%s'\n", pakName);*/
 	}
 }
 

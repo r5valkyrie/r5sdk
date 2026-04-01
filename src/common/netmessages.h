@@ -172,6 +172,7 @@ enum NetMessageType
 	// From here on, SDK netmessages are enumerated.
 	svc_SetClassVar                 = 66,
 	svc_SystemSayText				= 67,
+	net_ScriptMessage               = 68,
 };
 
 //-------------------------------------------------------------------------
@@ -649,6 +650,53 @@ public:
 	} cvar_t;
 
 	CUtlVector<cvar_t> m_ConVars;
+};
+
+class NET_ScriptMessage : public CNetMessage
+{
+public:
+	static constexpr int SCRIPT_MESSAGE_BUFFER_SIZE = 2048;
+
+	NET_ScriptMessage()
+	{
+		m_bIsTyped = false;
+		m_nGroup = NetMessageGroup::NoReplay;
+		m_bReliable = true;
+		memset(m_Buffer, 0, sizeof(m_Buffer));
+	}
+
+	virtual bool	ReadFromBuffer(bf_read* buffer);
+	virtual bool	WriteToBuffer(bf_write* buffer);
+	virtual bool	Process(void);
+
+	virtual int				GetType(void) const { return net_ScriptMessage; }
+	virtual const char*		GetName(void) const { return "net_ScriptMessage"; }
+	virtual const char*		ToString(void) const
+	{
+		static char szBuf[128];
+		const int nBytes = (m_DataOut.GetNumBitsWritten() + 7) >> 3;
+		V_snprintf(szBuf, sizeof(szBuf), "%s: typed=%d, bytes=%d",
+			GetName(), m_bIsTyped ? 1 : 0, nBytes);
+		return szBuf;
+	}
+	virtual size_t			GetSize(void) const { return sizeof(NET_ScriptMessage); }
+
+	void Reset()
+	{
+		m_bIsTyped = false;
+		memset(m_Buffer, 0, sizeof(m_Buffer));
+	}
+
+	void InitWrite()
+	{
+		Reset();
+		m_DataOut.StartWriting(m_Buffer, sizeof(m_Buffer));
+	}
+
+	bool m_bIsTyped;
+	bf_read m_DataIn;
+	bf_write m_DataOut;
+	char m_Buffer[SCRIPT_MESSAGE_BUFFER_SIZE];
 };
 
 ///////////////////////////////////////////////////////////////////////////////////////

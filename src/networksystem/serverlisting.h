@@ -43,4 +43,7 @@ struct NetGameServer_t
 
 	// required mod ids for clients to join this server
 	vector<string> requiredMods;
+
+	// the mods profile identifier for this server
+	string modsProfile;
 };

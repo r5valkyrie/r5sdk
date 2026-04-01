@@ -8,11 +8,23 @@
 #include "core/stdafx.h"
 #include "engine/cmodel_bsp.h"
 #include "engine/modelloader.h"
+#include "engine/vis_debug.h"
 #include "datacache/mdlcache.h"
 #ifndef DEDICATED
 #include <vgui/vgui_baseui_interface.h>
 #endif // !DEDICATED
 #include <filesystem/filesystem.h>
+
+static ConVar vis_validate_on_load("vis_validate_on_load", "0", FCVAR_DEVELOPMENTONLY, "Validate visibility tree data on load");
+static ConVar vis_dump_on_load("vis_dump_on_load", "0", FCVAR_DEVELOPMENTONLY, "Dump visibility tree data on load");
+
+// Cached lump data for cross-lump validation
+static const dcellaabbnode_t* s_pCellAABBNodes = nullptr;
+static int s_nCellAABBNodeCount = 0;
+static const int32_t* s_pObjReferences = nullptr;
+static int s_nObjReferenceCount = 0;
+static const dcell_t* s_pCells = nullptr;
+static int s_nCellCount = 0;
 
 //model_t* pErrorMDL = nullptr;
 
@@ -268,6 +280,78 @@ void CMapLoadHelper::Constructor(CMapLoadHelper* loader, int lumpToLoad)
 			{
 				FileSystem()->Seek(mapFileHandle, loader->m_nLumpOffset, FILESYSTEM_SEEK_HEAD);
 				FileSystem()->ReadEx(loader->m_pRawData, lumpSize, lumpSize, mapFileHandle);
+			}
+		}
+
+		//---------------------------------------------------------------------
+		// VISIBILITY TREE VALIDATION
+		// Cache lump data for cross-validation and perform checks
+		//---------------------------------------------------------------------
+		if (vis_validate_on_load.GetBool())
+		{
+			switch (lumpToLoad)
+			{
+			case LUMP_CELL_AABB_NODES: // 0x77
+				s_pCellAABBNodes = reinterpret_cast<const dcellaabbnode_t*>(loader->m_pData);
+				s_nCellAABBNodeCount = lumpSize / sizeof(dcellaabbnode_t);
+				DevMsg(eDLL_T::ENGINE, "Loaded CELL_AABB_NODES: %d nodes (%d bytes)\n", 
+					s_nCellAABBNodeCount, lumpSize);
+				
+				// Validate if we already have objReferences
+				if (s_pObjReferences && s_nObjReferenceCount > 0)
+				{
+					ValidateCellAABBNodes(s_pCellAABBNodes, s_nCellAABBNodeCount, s_nObjReferenceCount);
+				}
+				break;
+
+			case LUMP_OBJ_REFERENCES: // 0x78
+				s_pObjReferences = reinterpret_cast<const int32_t*>(loader->m_pData);
+				s_nObjReferenceCount = lumpSize / sizeof(int32_t);
+				DevMsg(eDLL_T::ENGINE, "Loaded OBJ_REFERENCES: %d refs (%d bytes, %d bytes/ref)\n", 
+					s_nObjReferenceCount, lumpSize, (int)sizeof(int32_t));
+				
+				// Validate if we already have AABB nodes
+				if (s_pCellAABBNodes && s_nCellAABBNodeCount > 0)
+				{
+					ValidateCellAABBNodes(s_pCellAABBNodes, s_nCellAABBNodeCount, s_nObjReferenceCount);
+				}
+				break;
+
+			case LUMP_CELLS: // 0x6B
+				s_pCells = reinterpret_cast<const dcell_t*>(loader->m_pData);
+				s_nCellCount = lumpSize / sizeof(dcell_t);
+				DevMsg(eDLL_T::ENGINE, "Loaded CELLS: %d cells (%d bytes)\n", 
+					s_nCellCount, lumpSize);
+				
+				// Validate if we already have AABB nodes
+				if (s_pCellAABBNodes && s_nCellAABBNodeCount > 0)
+				{
+					ValidateCells(s_pCells, s_nCellCount, s_nCellAABBNodeCount);
+				}
+				break;
+
+			case LUMP_OBJ_REFERENCE_BOUNDS: // 0x79
+				{
+					int boundsCount = lumpSize / sizeof(dobjrefbounds_t);
+					DevMsg(eDLL_T::ENGINE, "Loaded OBJ_REFERENCE_BOUNDS: %d bounds (%d bytes)\n", 
+						boundsCount, lumpSize);
+					
+					// Check bounds count matches objReferences count
+					if (s_nObjReferenceCount > 0 && boundsCount != s_nObjReferenceCount)
+					{
+						Warning(eDLL_T::ENGINE, "OBJ_REFERENCE_BOUNDS count (%d) != OBJ_REFERENCES count (%d)!\n",
+							boundsCount, s_nObjReferenceCount);
+					}
+				}
+				break;
+
+			case LUMP_CELL_BSP_NODES: // 0x6A
+				{
+					int bspNodeCount = lumpSize / sizeof(dcellbspnode_t);
+					DevMsg(eDLL_T::ENGINE, "Loaded CELL_BSP_NODES: %d nodes (%d bytes)\n", 
+						bspNodeCount, lumpSize);
+				}
+				break;
 			}
 		}
 	}

@@ -26,6 +26,8 @@
 #define FIXANGLE_ABSOLUTE		1
 #define FIXANGLE_RELATIVE		2
 
+#define FL_ONGROUND				(1<<0)	// At rest / on the ground
+#define FL_DUCKING				(1<<1)	// Player flag -- Player is fully crouched
 #define FL_FAKECLIENT			(1<<7)	// Fake client, simulated server side; don't send network messages to them
 
 enum RenderMode_t

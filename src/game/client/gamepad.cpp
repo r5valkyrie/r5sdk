@@ -6,6 +6,9 @@
 #include "gamepad.h"
 
 static ConVar gamepad_use_per_scope_sensitivity_scalars("gamepad_use_per_scope_sensitivity_scalars", "0", FCVAR_ARCHIVE, "Gamepad uses the per scope scalars.");
+static ConVar gamepad_toggle_survivalSlot_to_weaponInspect(
+	"gamepad_toggle_survivalSlot_to_weaponInspect", "0", FCVAR_ARCHIVE,
+	"Toggle survival slot to weapon inspect on game.");
 
 static ConVar s_gamepadAdvancedAdsScalars[WeaponScopeZoomLevel_e::kScopeCount] = {
 	{"gamepad_ads_advanced_sensitivity_scalar_0", "1.0", FCVAR_ARCHIVE, "Gamepad ads sensitivity for 1x scopes / iron sights.", true, 0.1f, true, 20.0f},

@@ -44,6 +44,7 @@ static bool GetServerListingFromJSON(const rapidjson::Value& value, NetGameServe
         // Optional fields
         JSON_GetValue(value, "hasPassword", outGameServer.hasPassword);
         JSON_GetValue(value, "password",    outGameServer.netPassword);
+        JSON_GetValue(value, "modsProfile", outGameServer.modsProfile);
 
         // requiredMods (optional): parse manually from array of strings
         rapidjson::Document::ConstMemberIterator itReq;
@@ -217,6 +218,12 @@ bool CPylon::PostServerHost(string& outMessage, string& outToken, string& outHos
             mods.PushBack(rapidjson::Value(m.c_str(), (rapidjson::SizeType)m.length(), allocator), allocator);
         }
         requestJson.AddMember("requiredMods", mods, allocator);
+    }
+
+    // mods profile
+    if (!netGameServer.modsProfile.empty())
+    {
+        requestJson.AddMember("modsProfile", rapidjson::Value(netGameServer.modsProfile.c_str(), netGameServer.modsProfile.length(), allocator), allocator);
     }
 
     rapidjson::Document responseJson;

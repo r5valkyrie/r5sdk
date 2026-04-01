@@ -45,6 +45,7 @@
 #include "client/vengineclient_impl.h"
 #include "client/cdll_engine_int.h"
 #include "client/discord_presence.h"
+#include "client/steam_integration.h"
 #include "gameui/imgui_system.h"
 #endif // DEDICATED
 #include "networksystem/pylon.h"
@@ -58,6 +59,8 @@
 #include "game/server/gameinterface.h"
 #endif // !CLIENT_DLL
 #include "game/shared/vscript_shared.h"
+#include "game/shared/activity.h"
+#include "game/shared/activitymodifier.h"
 #include <tier2/fileutils.h>
 
 static void SV_ServerPasswordChanged_f(IConVar* pConVar, const char* pOldString, float flOldValue, ChangeUserData_t pUserData);
@@ -72,6 +75,7 @@ static ConVar host_autoReloadRespectGameState("host_autoReloadRespectGameState",
 
 static ConVar host_sessionId("host_sessionId", "", FCVAR_REPLICATED|FCVAR_DEVELOPMENTONLY, "Host session ID.");
 ConVar hostdesc("hostdesc", "", FCVAR_RELEASE, "Host game server description.");
+ConVar sv_modsProfile("sv_modsProfile", "", FCVAR_RELEASE, "Thunderstore mods profile identifier.");
 static ConVar sv_password("sv_password", "", FCVAR_RELEASE, "Server password for entry.", false, 0.f, false, 0.f, &SV_ServerPasswordChanged_f, nullptr);
 
 static void SV_ServerPasswordChanged_f(IConVar* pConVar, const char* pOldString, float flOldValue, ChangeUserData_t pUserData)
@@ -137,7 +141,8 @@ static void HostState_KeepAlive()
 			std::chrono::system_clock::now().time_since_epoch()
 			).count(),
 		// requiredMods (filled below after struct init)
-		{}
+		{},
+		sv_modsProfile.GetString()
 	};
 
 	// Populate required mods from ModSystem
@@ -253,6 +258,7 @@ void CHostState::FrameUpdate(CHostState* pHostState, double flCurrentTime, float
 #endif // !CLIENT_DLL
 #ifndef DEDICATED
 	RCONClient()->RunFrame();
+	Steam_RunFrame();
 	
 	// Update Discord Rich Presence
 	CDiscordPresence::Update();
@@ -432,7 +438,14 @@ void CHostState::Setup(void)
 	CDiscordPresence::Initialize();
 #endif // !DEDICATED
 
-	if (CommandLine()->CheckParm("-norandomkey"))
+	// Check if a custom net key was specified via ConVar (e.g., from command line)
+	const char* customKey = sv_netkey.GetString();
+	if (customKey && customKey[0] != '\0')
+	{
+		// Use the custom key provided by the user
+		NET_SetKey(customKey);
+	}
+	else if (CommandLine()->CheckParm("-norandomkey"))
 	{
 		// Change callbacks sets the default.
 		net_useRandomKey.SetValue(0);
@@ -717,6 +730,23 @@ void CHostState::State_NewGame(void)
 #endif // !CLIENT_DLL
 
 	Host_UpdateSessionID();
+
+	// Load custom activity modifiers from scripts/activity_modifier_types.txt (only once)
+	static bool s_activityModifiersLoaded = false;
+	if (!s_activityModifiersLoaded && IsActivityModifierSystemInitialized())
+	{
+		LoadCustomActivityModifiersFromFile();
+		s_activityModifiersLoaded = true;
+	}
+
+	// Load custom activities from scripts/activity_types.txt (only once)
+	static bool s_activitiesLoaded = false;
+	if (!s_activitiesLoaded && IsActivitySystemInitialized())
+	{
+		LoadCustomActivitiesFromFile();
+		s_activitiesLoaded = true;
+	}
+
 	SetState(HostStates_t::HS_RUN);
 }
 

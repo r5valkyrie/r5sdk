@@ -52,6 +52,7 @@ void NET_UseRandomKeyChanged_f(IConVar* pConVar, const char* pOldString, float f
 }
 
 ConVar net_useRandomKey("net_useRandomKey", "1", FCVAR_RELEASE, "Use random AES encryption key for game packets.", false, 0.f, false, 0.f, &NET_UseRandomKeyChanged_f, nullptr);
+ConVar sv_netkey("sv_netkey", "", FCVAR_RELEASE, "Specifies a custom base64 AES-128 net key to use instead of generating a random one on startup.");
 
 static ConVar net_tracePayload("net_tracePayload", "0", FCVAR_DEVELOPMENTONLY, "Log the payload of the send/recv datagram to a file on the disk.");
 static ConVar net_encryptionEnable("net_encryptionEnable", "1", FCVAR_DEVELOPMENTONLY | FCVAR_REPLICATED, "Use AES encryption on game packets.");

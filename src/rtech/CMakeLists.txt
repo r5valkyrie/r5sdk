@@ -82,6 +82,17 @@ add_sources( SOURCE_GROUP "Source"
 
 end_sources()
 
+add_module( "lib" "datatable" "vpc" ${FOLDER_CONTEXT} TRUE TRUE )
+
+start_sources()
+
+add_sources( SOURCE_GROUP "Source"
+   "datatable/datatable.cpp"
+   "datatable/datatable.h"
+)
+
+end_sources()
+
 add_module( "lib" "rui" "vpc" ${FOLDER_CONTEXT} TRUE TRUE )
 
 start_sources()

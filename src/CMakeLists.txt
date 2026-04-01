@@ -50,7 +50,8 @@ set( FOLDER_CONTEXT "Thirdparty/Networking" )
 add_subdirectory( thirdparty/protobuf )
 add_subdirectory( thirdparty/curl )
 add_subdirectory( thirdparty/dirtysdk )
-add_subdirectory( thirdparty/discordsdk )
+# discordsdk is no longer needed - using native IPC implementation
+# add_subdirectory( thirdparty/discordsdk )
 
 set( FOLDER_CONTEXT "Thirdparty/Threading" )
 add_subdirectory( thirdparty/ea/EAThread )

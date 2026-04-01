@@ -320,6 +320,141 @@ playlists
 		{
 			inherit defaults
 		}
+
+		freedm
+		{
+			inherit defaults
+			vars
+			{
+				gamemode_logo FREEDM
+				max_teams 4
+				max_players 12
+				min_players 12
+				max_alliances 2
+				scorelimit 30
+				survival_rounds_enabled 0
+				roundscorelimit 2
+				pick_loadout_interval 999
+				round_shuffle_loadouts 1
+				match_time_limit            600.0
+				podium_max_players_to_show 9
+				max_nofill_players 0
+				spectator_enabled 0
+				suddendeath_timelimit 1
+				timelimit 20
+				gm_hardcore_settings 0
+				is_elimination_based        0
+				has_default_winner          0
+				jump_from_plane_enabled     0
+				character_reselect_enabled  1
+				bleedout_enabled            0
+				infinite_heal_items         1
+				freedm_drop_loot_on_death               1
+				freedm_dropped_loot_persist_time        60
+				freedm_dropped_loot_cleanup_scan_period 5
+				freedm_loadout_changeable_at_anytime    1
+				freedm_airdrops_enabled                 1
+				freedm_airdrops_time_delay              30
+				airdrop_spawn_ordnance_with_weapons     1
+				active_objective_types                  ""
+				character_loadouts_enabled                  0
+				loadoutselection_enable_loadouts            1
+				loadoutselection_enable_challenge_loadouts  1
+				loadoutselection_enable_featured_loadouts   1
+				loadoutselection_rotation_start             "2024-05-07 09:30:00 -07:00"
+				loadout_ammo_multiplier                     2
+				valk_ult_launch_time  2.0
+				valk_ult_slow_up_time 0.67
+				valk_ult_up_distance  1800
+				trackingvision_cleanup_pois_ondeath         1
+				poi_lifetime                                30.0
+				victory_screen_default_tab  2
+				death_screen_default_tab    2
+				fullmap_enabled             1
+				disable_minimap_labels      1
+				compass_flat_enabled        0
+				killreplay_enabled          1
+				survival_enable_gladiator_intros    1
+				character_select_time_max           5
+				character_select_time_min           5
+				endflow_display_champion_on_podium  1
+				round_end_fade_time                 5.75
+				freedm_prematch_intro_time          6.0
+				banner_logo                         freedm
+				inventory_scoreboard_first_tab  0
+				enable_inventory_scoreboard     1
+				enable_death_scoreboard         1
+				enable_match_end_scoreboard     1
+				min_deathcam_spectate_length    2.0
+				scoreboard_mode_id              3
+				loot_standard_survival_enabled          0
+				survival_loot_enabled                   0
+				survival_block_lootbin_creation         1
+				loot_hotzone_enabled                    0
+				drop_loot_on_death                      0
+				ignore_loot_preprocess                  1
+				path_tt_loot_rollers_enabled            0
+				loot_vaults_enabled                     0
+				loot_drones_spawn_count                 0
+				enable_static_loot_ticks                0
+				sur_loot_spawn_only_in_start_deathfield_stage   1
+				respawn_should_check_squad_active       0
+				override_gamemode_for_entity_removal    "tdm"
+				use_manual_spawn_points                 1
+				survival_respawn_style                  "spawn_near_squad"
+				respawn_queue_active                    1
+				respawns                                -1
+				respawn_cooldown                        8
+				respawn_cooldown_max                    8
+				SpawnFrontlineNPCs                      0
+				spawn_rating_dist_near_friendly     1200.0
+				spawn_rating_dist_far_friendly      2400.0
+				spawn_rating_scale_friendly         1.5
+				spawn_rating_dist_near_enemy        1200.0
+				spawn_rating_dist_far_enemy         3200.0
+				spawn_rating_scale_enemy            -2.0
+				spawn_test_los                      1
+				spawn_restriction_distance          800
+				spawn_restriction_los_distance      0
+				spawn_restriction_los_check_fov     0
+				spawn_rating_previous_spawn_influence_dist      500
+				spawn_rating_previous_spawn_influence_value     2
+				crafting_enabled                0
+				should_spawn_placed_vehicles    0
+				survey_beacons_enabled          0
+				wildlife_ai_enabled             0
+				hovertanks_count_intro 0
+				hovertanks_count_mid 0
+				hovertanks_chance_mid 0
+				canyonlands_hovertanks_circle_index 0
+				deathfield_is_enabled 0
+				survival_deathfield_enabled 0
+				airdrop_start_during_shrink 0
+				airdrop_data_round_0        "-1"
+				airdrop_data_round_1        "-1"
+				airdrop_data_round_2        "-1"
+				play_match_end_music_on_squad_eliminated    0
+				freedm_play_standard_match_end_music        0
+				player_death_sound "player_death_begin_killcam_noduck"
+				xp_first_game_amount    0
+				xp_champion_amount      0
+				xp_damage_dealt_amount  0.1
+				xp_friend_amount        3.0
+				xp_friend_frac          0.014
+				xp_kill_amount          30
+				xp_kill_champion_amount 0
+				xp_kill_leader_amount   0
+				xp_loot_master_amount   0
+				xp_respawn_ally_amount  0
+				xp_revive_ally_amount   0
+				xp_top_five_amount      0
+				xp_win_match_amount     100
+				xp_first_kill_amount    50
+				navmesh_disable         "med_short, extra_large"
+				max_props               300000
+				max_prop_data_dwords    475000
+			}
+		}
 	}
 
 // START OF MP GAMEMODES LINE --------------------------------------------------
@@ -1016,6 +1151,204 @@ playlists
 				respawn_kit_tactical                           "mp_ability_3dash"
 				respawn_kit_ultimate                           "mp_ability_phase_walk"
 			}
+		}
+
+		freedm_base
+		{
+			inherit defaults
+			vars
+			{
+				name        ""
+				description ""
+				emblem freedm
+				ui_rules freedm
+				gamemode_select_category_name "#GAMEMODE_CATEGORY_MIXTAPE"
+
+				hover_vehicles_enabled 0
+
+				ui_slot mixtape
+				visible 0
+				max_team_size 3
+
+				matchmake_from_match    1
+
+				is_shield_regen_mode                        0
+				mode_health_regen_active                    1
+				mode_health_regen_amount                    10.0
+				mode_health_regen_tick                      0.25
+				mode_health_regen_delay                     6.0
+
+				auto_pickup_ordnance                        1
+
+				match_time_limit                600
+				match_time_remaining_warning    60
+
+				match_jip 1
+				max_time_remaining_for_jip  120.0
+				min_jip_time                30.0
+				match_jip_state_delay       10.0
+
+				mixtape_match_abandon_penalty 1
+				mixtape_abandon_penalty_time_1 120
+				mixtape_abandon_penalty_time_2 300
+				mixtape_abandon_penalty_time_3 600
+				mixtape_abandon_penalty_time_4 1200
+
+				spawn_rating_scale_friendly                     1.25
+				spawn_rating_scale_enemy                        -0.75
+				spawn_rating_dist_near_friendly                 500.0
+				spawn_rating_dist_far_friendly                  4000.0
+				spawn_rating_dist_near_enemy                    801.0
+				spawn_rating_dist_far_enemy                     2800.0
+				spawn_test_los                                  1
+				spawn_restriction_distance                      800
+				spawn_restriction_los_distance                  0
+				spawn_restriction_los_check_fov                 0
+				spawn_rating_previous_spawn_influence_dist      1000
+				spawn_rating_previous_spawn_influence_value     0.1
+
+				xp_match_completed_amount                       25
+				xp_match_completed_joined_in_progress_amount    25
+
+				edict_cleanup_loot_merge_enabled    0
+				triggers_allow_team_filters         1
+				max_snapshots                       135
+
+				ambient_dialogue_enabled 0
+
+				disable_all_perks                                       1
+				passive_upgrade_core_enabled                            0
+				upgrade_core_survival_disabled_loot                     ""
+				character_select_upgrade_tree_enabled                   0
+
+				player_death_sound "player_death_begin_survival_8sec"
+			}
+		}
+
+		freedm_tdm
+		{
+			inherit freedm_base
+			vars
+			{
+				name            #TDM_NAME
+				description     #TDM_DESC
+				about_text      #TDM_ABOUT_DESC
+				visible 1
+
+				ui_slot mixtape
+				ui_rules                    "tdm"
+				show_ltm_about_button 1
+
+				scorelimit                      50
+				max_score_difference_for_jip    20
+				max_score_for_jip               40
+
+				podium_max_players_to_show                      6
+				podium_allow_intro_screen_emotes                1
+				podium_intro_screen_count                       2
+				podium_intro_screen_use_set_team_or_alliance    1
+				podium_intro_screen_duration                    6.0
+				podium_intro_post_charselect_wait               5.0
+				survival_enable_squad_intro                     0
+				survival_enable_gladiator_intros                0
+				charselect_outro_all_squads_present_duration    6.0
+				charselect_outro_scene_change_duration          4.0
+				survival_hide_character_select_room             0
+
+				freedm_prematch_intro_time          7.0
+				freedm_tdm_active 1
+				scoreboard_mode_id 5
+
+				pin_match_type          "ftdm"
+				stats_match_type        "ftdm"
+
+				roundwinningkillreplay_enabled 1
+				roundwinningkillreplay_slowmo  0
+				max_snapshots 175
+				round_winning_kill_replay_startup_wait 4.2
+			}
+			gamemodes { freedm { maps {
+				mp_rr_canyonlands_64k_x_64k     1
+				mp_rr_desertlands_64k_x_64k     1
+				mp_rr_olympus_mu1               1
+			} } }
+		}
+
+		freedm_gungame
+		{
+			inherit freedm_base
+			vars
+			{
+				name #GAME_MODE_GUNGAME
+				description #GUNGAME_DESCRIPTION
+
+				show_ltm_about_button 1
+				show_ltm_about_button_is_takeover 0
+				ui_slot mixtape
+
+				visible 1
+
+				max_teams 4
+				min_players 12
+				max_players 12
+				max_alliances 0
+
+				scorelimit 25
+
+				max_score_difference_for_jip    10
+				max_score_for_jip               12
+
+				freedm_drop_loot_on_death 0
+				freedm_airdrops_enabled   0
+
+				loadoutselection_enable_loadouts 0
+
+				freedm_gun_game_active              1
+				gungame_score_assists               0
+				freedm_gun_game_melee_reduce_point  1
+				gun_game_weapon_skip_enable         0
+
+				gungame_disabled_weapons "mp_weapon_sentinel mp_weapon_bow"
+
+				gun_game_optic_override_mp_weapon_doubletake_blueset    "optic_ranged_hcog"
+				gun_game_optic_override_mp_weapon_sentinel_blueset      "optic_ranged_aog_variable"
+				gun_game_optic_override_mp_weapon_dmr_blueset           "optic_ranged_hcog"
+				gun_game_optic_override_mp_weapon_defender_blueset      "optic_ranged_aog_variable"
+				gun_game_optic_override_mp_weapon_3030_purpleset        "optic_ranged_hcog"
+
+				has_squad_based_ui                   1
+				show_team_color_obituary             1
+				show_team_color_obituary_enemies_red 0
+				inventory_tab_hidden                 1
+				hud_hide_hopuppopup                  1
+				hud_hide_infopopup                   1
+				show_hud_in_prematch                 1
+				show_teamunitframes_in_prematch      1
+				hide_inventory_counter_in_prematch   1
+
+				survival_enable_all_squads_intro                1
+				survival_enable_squad_intro                     1
+				survival_squad_intro_show_title_frame           1
+				survival_enable_gladiator_intros                0
+				survival_enable_mvp_intros                      1
+				survival_hide_character_select_room             1
+				charselect_outro_mvp_present_duration           8
+				charselect_outro_all_squads_present_duration    9
+
+				roundwinningkillreplay_enabled                 1
+				roundwinningkillreplay_slowmo                  0
+				max_snapshots                                  175
+				round_winning_kill_replay_startup_wait         4.2
+
+				pin_match_type   "gungame"
+				stats_match_type "gungame"
+				xp_bonus_final_kill_amount                      50
+			}
+			gamemodes { freedm { maps {
+				mp_rr_canyonlands_64k_x_64k     1
+				mp_rr_desertlands_64k_x_64k     1
+				mp_rr_olympus_mu1               1
+			} } }
 		}
 
 		///////////////////////////////////

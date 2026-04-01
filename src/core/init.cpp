@@ -43,8 +43,10 @@
 #include "vphysics/physics_collide.h"
 #include "vphysics/QHull.h"
 #include "engine/staticpropmgr.h"
+#include "engine/staticprop_bounds_debug.h"
 #include "materialsystem/cmaterialsystem.h"
 #include "materialsystem/cmatqueuedrendercontext.h"
+#include "materialsystem/constbuffer.h"
 #ifndef DEDICATED
 #include "materialsystem/cmaterialglue.h"
 #include "materialsystem/texturestreaming.h"
@@ -78,6 +80,7 @@
 #include "rtech/pak/pakstream.h"
 #include "rtech/stryder/stryder.h"
 #include "rtech/playlists/playlists.h"
+#include "rtech/datatable/datatable.h"
 #ifndef DEDICATED
 #include "rtech/rui/rui.h"
 #include "engine/client/cl_ents_parse.h"
@@ -95,6 +98,10 @@
 #include "engine/traceinit.h"
 #include "engine/common.h"
 #include "engine/cmodel_bsp.h"
+#include "engine/sv_model_precache_ext.h"
+#ifndef DEDICATED
+#include "engine/cmodel_bsp_debug.h"
+#endif // !DEDICATED
 #include "engine/modelinfo.h"
 #include "engine/host.h"
 #include "engine/host_cmd.h"
@@ -105,6 +112,7 @@
 #include "engine/net_chan.h"
 #include "engine/networkstringtable.h"
 #include "engine/debugoverlay.h"
+#include "engine/vis_debug.h"
 #ifndef CLIENT_DLL
 #include "engine/server/sv_main.h"
 #include "engine/server/sv_rcon.h"
@@ -132,11 +140,17 @@
 #include "vscript/languages/squirrel_re/vsquirrel.h"
 #include "vscript/vscript.h"
 #include "game/shared/r1/weapon_parse.h"
+#include "game/shared/r1/blast_pattern.h"
 #include "game/shared/r1/weapon_bolt.h"
 #include "game/shared/util_shared.h"
 #include "game/shared/usercmd.h"
 #include "game/shared/animation.h"
+#include "game/shared/activity.h"
+#include "game/shared/activitymodifier.h"
 #include "game/shared/vscript_shared.h"
+#ifndef DEDICATED
+#include "game/shared/scriptremotefunctions.h"
+#endif // !DEDICATED
 #ifndef CLIENT_DLL
 #include "game/server/util_server.h"
 #include "game/server/ai_node.h"
@@ -164,7 +178,16 @@
 #include "game/client/cliententitylist.h"
 #include "game/client/c_player.h"
 #include "game/client/c_baseentity.h"
+#include "game/shared/weapon_script_vars.h"
+#include "game/shared/highlight_context.h"
+#include "game/shared/dt_injection.h"
 #include "game/client/hud_basechat.h"
+#include "game/client/c_zipline_fix.h"
+#include "game/client/clientleafsystem.h"
+#include "game/client/concommandcallback.h"
+#include "game/client/viewmodel_poseparam.h"
+#include "game/client/ruitracks.h"
+#include "game/client/rui_walltime.h"
 #endif // !DEDICATED
 #include "public/edict.h"
 #ifndef DEDICATED
@@ -286,6 +309,10 @@ void Systems_Init()
 #ifndef SERVER_DLL
 	ClientScriptRegister_Callback = Script_RegisterClientFunctions;
 	UiScriptRegister_Callback =  Script_RegisterUIFunctions;
+
+	// Register custom RUI track enums for extended compatibility
+	ClientScriptRegisterEnum_Callback = RuiTracks_RegisterMissingEnums;
+	UIScriptRegisterEnum_Callback = RuiTracks_RegisterMissingEnums;
 
 #ifndef CLIENT_DLL
 	UiServerScriptRegister_Callback = Script_RegisterUIServerFunctions;
@@ -576,11 +603,13 @@ void DetourRegister() // Register detour classes to be searched and hooked.
 
 	// StaticPropMgr
 	REGISTER(VStaticPropMgr);
+	REGISTER(VStaticPropBoundsDebug);
 
 	// MaterialSystem
 	REGISTER(VMaterialSystem);
 	REGISTER(VMatQueuedRenderContext);
 #ifndef DEDICATED
+	REGISTER(VConstBuffer);
 	REGISTER(VMaterialGlue);
 	REGISTER(VShaderGlue);
 	REGISTER(VTextureStreaming);
@@ -597,6 +626,9 @@ void DetourRegister() // Register detour classes to be searched and hooked.
 	// Particles
 	REGISTER(VParticles);
 	REGISTER(VParticleOverlay);
+
+	// Script Remote Functions
+	REGISTER(VScriptRemoteFunctions);
 
 	// Client
 	REGISTER(HVEngineClient);
@@ -635,6 +667,7 @@ void DetourRegister() // Register detour classes to be searched and hooked.
 
 	REGISTER(VStryder);
 	REGISTER(VPlaylists);
+	REGISTER(V_Datatable);
 
 #ifndef DEDICATED
 	REGISTER(V_Rui);
@@ -649,10 +682,12 @@ void DetourRegister() // Register detour classes to be searched and hooked.
 	REGISTER(VSys_Utils);
 	REGISTER(VEngine);
 	REGISTER(VEngineTrace);
+	// Note: VBSPCollisionDebug is self-registered in cmodel_bsp_debug.cpp
 	REGISTER(VModelInfo);
 
 	REGISTER(VTraceInit);
 	REGISTER(VModel_BSP);
+	REGISTER(VSV_ModelPrecacheExt);
 	REGISTER(VHost);
 	REGISTER(VHostCmd);
 	REGISTER(VHostState);
@@ -682,6 +717,7 @@ void DetourRegister() // Register detour classes to be searched and hooked.
 #endif // !DEDICATED
 
 	REGISTER(VDebugOverlay);
+	REGISTER(VVisDebug);
 
 	// VScript
 	REGISTER(VSquirrel);
@@ -692,6 +728,7 @@ void DetourRegister() // Register detour classes to be searched and hooked.
 #endif // !CLIENT_DLL
 #ifndef DEDICATED
 	REGISTER(VScriptClient);
+	REGISTER(VViewmodelPoseParam);
 #endif // !DEDICATED
 
 	// Squirrel
@@ -703,9 +740,12 @@ void DetourRegister() // Register detour classes to be searched and hooked.
 	// Game/shared
 	REGISTER(VUserCmd);
 	REGISTER(VAnimation);
+	REGISTER(VActivityList);
+	REGISTER(VActivityModifiers);
 	REGISTER(V_UTIL_Shared);
 
 	REGISTER(V_Weapon_Parse);
+	REGISTER(VBlastPattern);
 
 #ifndef CLIENT_DLL
 
@@ -739,7 +779,15 @@ void DetourRegister() // Register detour classes to be searched and hooked.
 	REGISTER(VClientEntityList);
 	REGISTER(V_Player);
 	REGISTER(VC_BaseEntity);
+	REGISTER(VWeaponScriptVars);
+	REGISTER(VHighlightContext);
+	REGISTER(VDTInjection);
 	REGISTER(VHudChat);
+	REGISTER(VZiplineFix);
+	REGISTER(VRuiTracks);
+	REGISTER(VRuiWallTime);
+	REGISTER(VClientLeafSystem);
+	REGISTER(VConCommandCallback);
 #endif // !DEDICATED
 
 	// Public

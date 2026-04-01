@@ -342,7 +342,19 @@ void Dedicated_Init()
 void RuntimePtc_Init() /* .TEXT */
 {
 #ifndef DEDICATED
-	p_WASAPI_GetAudioDevice.Offset(0x410).FindPatternSelf("FF 15 ?? ?? 01 00", CMemory::Direction::DOWN, 100).Patch({ 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0xEB }); // CAL --> NOP | Disable debugger check when miles searches for audio device to allow attaching the debugger to the game upon launch.
+	// Disable debugger check when Miles searches for audio device.
+	// This allows debugger attachment without audio initialization failing.
+	// Miles (10.0.48): offset 0x410, pattern "FF 15 ?? ?? 01 00"
+	// Miles (10.0.62): offset 0x420, pattern "FF 15 ?? ?? 06 00"
+	if (p_WASAPI_GetAudioDevice.GetPtr())
+	{
+		CMemory wasapiPatch = p_WASAPI_GetAudioDevice.Offset(0x420).FindPatternSelf("FF 15 ?? ?? 06 00", CMemory::Direction::DOWN, 100);
+		if (wasapiPatch.GetPtr())
+		{
+			// NOP the IsDebuggerPresent call (6 bytes) + test eax,eax (2 bytes) + change jz to jmp
+			wasapiPatch.Patch({ 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0xEB }); // CALL + TEST --> NOP, JZ --> JMP
+		}
+	}
 #endif
 	CMemory(v_SQVM_CompileError).Offset(0x0).FindPatternSelf("41 B0 01", CMemory::Direction::DOWN, 400).Patch({ 0x41, 0xB0, 0x00 });        // MOV --> MOV | Set script error level to 0 (not severe): 'mov r8b, 0'.
 }

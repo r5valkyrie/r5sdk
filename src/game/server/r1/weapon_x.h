@@ -17,6 +17,9 @@ class CWeaponX : CBaseAnimating
 public:
 	float GetZoomFOVInterpAmount(const float curTime) const;
 
+	// Checks fireMode == 4 (eWeaponFireMode.offhandMelee)
+	inline bool IsWeaponOffhandMelee() const { return *(_DWORD*)&m_modVars[3952] == 4; }
+
 private:
 	EHANDLE m_weaponOwner;
 	float m_lastPrimaryAttack;

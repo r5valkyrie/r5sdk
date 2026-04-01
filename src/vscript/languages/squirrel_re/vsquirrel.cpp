@@ -154,15 +154,22 @@ ScriptStatus_t CSquirrelVM::ExecuteFunction(HSCRIPT hFunction, const ScriptVaria
 {
 	const SQObjectPtr* const f = reinterpret_cast<SQObjectPtr*>(hFunction);
 
-	const SQClosure* const closure = _closure(*f);
-	const SQFunctionProto* const fp = _funcproto(closure->_function);
+	// Only script closures (OT_CLOSURE) have a SQFunctionProto with profiling
+	// metadata. Native closures (OT_NATIVECLOSURE) have a different layout and
+	// accessing _function on them reads garbage, causing a crash.
+	const SQFunctionProto* fp = nullptr;
+	const char* functionName = "(native)";
 
-	// Only bother doing a timer if the funcproto is not nullptr.
-	// This should always be true unless something has gone badly wrong.
+	if (sq_isclosure(*f))
+	{
+		const SQClosure* const closure = _closure(*f);
+		fp = _funcproto(closure->_function);
+
+		if (fp)
+			functionName = _stringval(fp->_funcname);
+	}
+
 	const bool hasFuncProto = fp != nullptr;
-	const char* functionName = hasFuncProto ? _stringval(fp->_funcname) : "(no funcproto)";
-
-	Assert(hasFuncProto);
 	CFastTimer callTimer;
 
 	// Start a timer for any named function call

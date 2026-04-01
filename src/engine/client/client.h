@@ -61,7 +61,7 @@ class CClientFrame
 
 ///////////////////////////////////////////////////////////////////////////////
 
-class CClient : IClientMessageHandler, INetChannelHandler
+class CClient : public IClientMessageHandler, public INetChannelHandler
 {
 	friend class ServerDataBlockSender;
 public:

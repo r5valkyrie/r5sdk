@@ -2,6 +2,7 @@
 #include "mathlib/vector.h"
 
 extern ConVar hostdesc;
+extern ConVar sv_modsProfile;
 
 enum class HostStates_t : int
 {

@@ -134,9 +134,7 @@ static const char* GetContextNameByIndex(eDLL_T context, size_t& numTotalChars, 
 bool LoggedFromClient(eDLL_T context)
 {
 #ifndef DEDICATED
-	return (context == eDLL_T::CLIENT || context == eDLL_T::SCRIPT_CLIENT
-		|| context == eDLL_T::UI || context == eDLL_T::SCRIPT_UI
-		|| context == eDLL_T::NETCON);
+	return (context == eDLL_T::NETCON);
 #else
 	NOTE_UNUSED(context);
 	return false;

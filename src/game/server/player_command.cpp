@@ -1,4 +1,4 @@
-//====== Copyright © 1996-2005, Valve Corporation, All rights reserved. =======//
+//====== Copyright ï¿½ 1996-2005, Valve Corporation, All rights reserved. =======//
 //
 // Purpose: 
 //
@@ -8,6 +8,7 @@
 #include "engine/client/client.h"
 
 #include "player_command.h"
+#include "game/shared/in_buttons.h"
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -15,6 +16,8 @@
 CPlayerMove::CPlayerMove(void)
 {
 }
+
+static ConVar sv_autobunnyhopping("sv_autobunnyhopping", "0", FCVAR_RELEASE | FCVAR_REPLICATED | FCVAR_CHEAT, "Players automatically re-jump while holding the jump button.");
 
 //-----------------------------------------------------------------------------
 // Purpose: Runs movement commands for the player
@@ -24,6 +27,15 @@ CPlayerMove::CPlayerMove(void)
 //-----------------------------------------------------------------------------
 void CPlayerMove::StaticRunCommand(CPlayerMove* thisp, CPlayer* player, CUserCmd* ucmd, IMoveHelper* moveHelper)
 {
+	// Auto bunny hopping: strip the jump button from the usercmd while the
+	// player is airborne. This way, when they land, the engine sees IN_JUMP
+	// appear as a fresh press and triggers a new jump automatically.
+	if (sv_autobunnyhopping.GetBool() && (ucmd->buttons & IN_JUMP))
+	{
+		if (!(player->GetFlags() & FL_ONGROUND))
+			ucmd->buttons &= ~IN_JUMP;
+	}
+
 	CClientExtended* const cle = g_pServer->GetClientExtended(player->GetEdict() - 1);
 	float playerFrameTime;
 	

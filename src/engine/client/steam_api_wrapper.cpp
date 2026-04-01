@@ -150,6 +150,7 @@ extern "C" int Steam_IsOverlayEnabled()
 
 extern "C" void Steam_SetOverlayNotificationPosition(int position)
 {
+    (void)position; // May be unused if STEAMWORKS_CLIENT_INTERFACES is not defined
 #ifdef STEAMWORKS_CLIENT_INTERFACES
     if (SteamUtils()) {
         // position: 0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right

@@ -38,7 +38,7 @@ public:
 	int GetCollisionGroup(void) const { return m_collisionGroup; }
 
 private:
-	int m_reserved; // Probably for debugging code, no use cases found in the retail engine executable.
+	int m_reserved; // Likely debug-only; no use cases found in the engine.
 	const IHandleEntity* m_pPassEntity;
 	ShouldHitFunc_t m_pExtraShouldHitCheckFunction;
 	int m_collisionGroup;

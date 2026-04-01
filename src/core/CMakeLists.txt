@@ -124,6 +124,7 @@ target_link_libraries( ${PROJECT_NAME} PRIVATE
     "vguimatsurface"
     "vgui"
     "rui"
+    "datatable"
 
     "particles"
 
@@ -264,10 +265,12 @@ if( USE_STEAMWORKS AND STEAM_SDK_DIR )
         # Add USE_STEAMWORKS define to all files in the target
         target_compile_definitions(${PROJECT_NAME} PRIVATE USE_STEAMWORKS)
         
-        # Add Steam includes and definitions to the wrapper file
+        # Exclude steam_api_wrapper.cpp from precompiled headers to avoid type conflicts
+        # between r5sdk's sdkint.h and Steam's steamtypes.h
         set_source_files_properties(
             "${ENGINE_SOURCE_DIR}/engine/client/steam_api_wrapper.cpp"
             PROPERTIES
+            SKIP_PRECOMPILE_HEADERS ON
             INCLUDE_DIRECTORIES "${STEAM_SDK_DIR}/public;${STEAM_SDK_DIR}/public/steam"
         )
         if( WIN32 )

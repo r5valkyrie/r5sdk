@@ -28,6 +28,7 @@
 #ifndef DEDICATED
 #include "game/client/c_baseentity.h"
 #include "game/client/cliententitylist.h"
+#include "engine/cmodel_bsp_debug.h"
 #endif // !DEDICATED
 #if !defined(CLIENT_DLL) && !defined (DEDICATED)
 #include "game/shared/ai_utility_shared.h"
@@ -503,6 +504,11 @@ static void DebugOverlay_DrawAllOverlays(const bool bDraw)
         g_AIUtility.RunRenderFrame();
     }
 #endif // !CLIENT_DLL && !DEDICATED
+
+#ifndef DEDICATED
+    // BSP collision debug rendering
+    CBSPCollisionDebug::Render();
+#endif // !DEDICATED
 }
 
 //------------------------------------------------------------------------------

@@ -10,6 +10,8 @@ inline void (*v_Script_RegisterCommonEnums_Client)(CSquirrelVM* const s);
 inline void*(*v_Script_Remote_BeginRegisteringFunctions)(void);
 inline void*(*v_RestoreRemoteChecksumsFromSaveGame)(void* a1, void* a2);
 
+inline __int64(*v_SQObject_ToString)(__int64 vm, void* srcObj, void* dstObj);
+
 inline uint32_t* g_nServerRemoteChecksum = nullptr;
 inline uint32_t* g_nClientRemoteChecksum = nullptr;
 
@@ -39,6 +41,7 @@ class VScriptShared : public IDetour
 
 		LogFunAdr("Remote_BeginRegisteringFunctions", v_Script_Remote_BeginRegisteringFunctions);
 		LogFunAdr("RestoreRemoteChecksumsFromSaveGame", v_RestoreRemoteChecksumsFromSaveGame);
+		LogFunAdr("SQObject_ToString", v_SQObject_ToString);
 
 		LogVarAdr("g_nServerRemoteChecksum", g_nServerRemoteChecksum);
 		LogVarAdr("g_nClientRemoteChecksum", g_nClientRemoteChecksum);
@@ -52,6 +55,8 @@ class VScriptShared : public IDetour
 
 		Module_FindPattern(g_GameDll, "48 83 EC 28 83 3D ?? ?? ?? ?? ?? 74 10").GetPtr(v_Script_Remote_BeginRegisteringFunctions);
 		Module_FindPattern(g_GameDll, "48 89 4C 24 ?? 41 54 48 83 EC 40").GetPtr(v_RestoreRemoteChecksumsFromSaveGame);
+
+		Module_FindPattern(g_GameDll, "48 89 5C 24 ?? 48 89 74 24 ?? 48 89 7C 24 ?? 55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 45 33 ED 48 8B DA 8B 12 BE 10 00 00 08").GetPtr(v_SQObject_ToString);
 	}
 	virtual void GetVar(void) const
 	{

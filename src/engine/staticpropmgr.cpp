@@ -1,6 +1,12 @@
 #include "core/stdafx.h"
 #include "datacache/mdlcache.h"
 #include "engine/staticpropmgr.h"
+#include "engine/debugoverlay.h"
+#include "tier1/cvar.h"
+
+// ConVars to control debug text for static props
+ConVar debug_staticprop_text("debug_staticprop_text", "0", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT, "Enable debug text for static props");
+ConVar debug_staticprop_text_duration("debug_staticprop_text_duration", "5.0", FCVAR_DEVELOPMENTONLY | FCVAR_CHEAT, "Duration (seconds) for static prop debug text");
 
 //-----------------------------------------------------------------------------
 // Purpose: initialises static props from the static prop gamelump
@@ -19,7 +25,23 @@ void* CStaticProp::Init(CStaticProp* thisptr, int64_t a2, unsigned int idx, unsi
         lump->m_Skin = 0;
     }
 
-    return CStaticProp__Init(thisptr, a2, idx, a4, lump, a6, a7);
+    // Call original init first — some static props are initialised before
+    // the debug overlay system is ready; adding the overlay afterwards
+    // increases the chance the text persists and is rendered.
+    void* ret = CStaticProp__Init(thisptr, a2, idx, a4, lump, a6, a7);
+
+    // Show debug text next to static props so tools can inspect map-placed models.
+    // Uses the existing debug overlay interface which respects `enable_debug_text_overlays`.
+#ifndef DEDICATED
+    if (pStudioHdr && g_pDebugOverlay && debug_staticprop_text.GetBool())
+    {
+        const Vector3D& origin = lump->m_Origin;
+        const float duration = debug_staticprop_text_duration.GetFloat();
+        CIVDebugOverlay::AddTextOverlayRGBu32(g_pDebugOverlay, origin, 0, duration, 255, 255, 0, 255, "staticprop %u: %s", idx, pStudioHdr->name);
+    }
+#endif // !DEDICATED
+
+    return ret;
 }
 
 //-----------------------------------------------------------------------------
